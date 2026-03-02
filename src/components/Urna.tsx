@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Candidate, Turma } from "@/data/turmas";
+import { Turma } from "@/data/turmas";
 
 interface UrnaProps {
   turma: Turma;
@@ -18,7 +18,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
   const candidate = digits.length === maxDigits
     ? turma.candidates.find((c) => c.number === parseInt(digits))
     : null;
-  const isNulo = digits.length === maxDigits && !candidate;
 
   const handleDigit = useCallback((d: string) => {
     if (confirmed) return;
@@ -56,7 +55,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
     setConfirmed(true);
   }, [confirmed, digits, candidate, onVoteConfirmed]);
 
-  // Keyboard support
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key >= "0" && e.key <= "9") handleDigit(e.key);
@@ -68,134 +66,124 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
     return () => window.removeEventListener("keydown", handler);
   }, [handleDigit, handleCorrect, handleConfirm, handleBlank]);
 
-  const initials = candidate
-    ? candidate.name.split(" ").map((n) => n[0]).slice(0, 2).join("")
-    : "";
-
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 gap-6">
-      {/* Header */}
+    <div className="min-h-screen bg-[#cdc8bc] p-4 md:p-8 flex flex-col items-center justify-center gap-4">
       <div className="text-center space-y-1">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-zinc-700">
           {turma.name} — Eleitor {voterNumber} de {totalVoters}
         </p>
-        <button onClick={onBack} className="text-xs text-muted-foreground underline hover:text-foreground">
+        <button onClick={onBack} className="text-xs text-zinc-600 underline hover:text-zinc-900">
           ← Voltar para seleção
         </button>
       </div>
 
-      {/* Urna Body */}
-      <div className="w-full max-w-md bg-urna-body rounded-2xl border border-border shadow-2xl overflow-hidden">
-        {/* Screen */}
-        <div className="bg-urna-screen text-urna-screen-foreground p-5 m-4 rounded-lg min-h-[220px] flex flex-col relative">
+      <div className="w-full max-w-[1280px] grid grid-cols-1 lg:grid-cols-[1fr_430px] gap-8 items-stretch">
+        <div className="bg-[#f4f4f4] border border-black/10 min-h-[520px] rounded-sm p-6">
           {showEndAnim ? (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="h-full flex items-center justify-center">
               <div className="text-center animate-pulse">
-                <p className="text-3xl font-bold text-urna-screen-foreground">FIM</p>
-                <p className="text-sm mt-1">Voto computado</p>
+                <p className="text-6xl font-extrabold">FIM</p>
+                <p className="text-lg">Voto computado</p>
               </div>
             </div>
           ) : (
-            <>
-              <p className="text-xs font-semibold tracking-widest uppercase mb-3 opacity-60">
-                Líder de Turma
-              </p>
-
-              <div className="flex gap-4">
-                {/* Number display */}
-                <div>
-                  <p className="text-xs mb-1 opacity-60">Número:</p>
-                  <div className="flex gap-1">
-                    {Array.from({ length: maxDigits }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-10 h-12 border-2 border-urna-screen-foreground/30 rounded flex items-center justify-center font-mono-display text-2xl font-bold"
-                      >
-                        {digits[i] || ""}
-                      </div>
-                    ))}
+            <div className="h-full flex flex-col justify-between">
+              <div>
+                <p className="text-xs tracking-[0.2em] text-zinc-600 uppercase">Líder de Turma</p>
+                <div className="mt-6 grid grid-cols-[120px_1fr] gap-6 items-start">
+                  <div className="space-y-2">
+                    <p className="text-sm text-zinc-600">Número</p>
+                    <div className="flex gap-2">
+                      {Array.from({ length: maxDigits }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-12 h-14 border-2 border-zinc-500 bg-white flex items-center justify-center text-3xl font-black"
+                        >
+                          {digits[i] || ""}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Candidate info */}
-                {digits.length === maxDigits && (
-                  <div className="flex-1 animate-in fade-in slide-in-from-right-4 duration-300">
-                    {candidate ? (
-                      <div className="flex gap-3 items-start">
-                        <div className="w-16 h-20 rounded bg-urna-screen-foreground/10 flex items-center justify-center text-lg font-bold shrink-0">
-                          {initials}
-                        </div>
-                        <div>
-                          <p className="text-xs opacity-60">Nome:</p>
-                          <p className="font-bold text-sm">{candidate.name}</p>
-                          <p className="text-xs opacity-60 mt-1">Turma:</p>
-                          <p className="text-sm">{candidate.turma}</p>
-                        </div>
+                  {digits.length === maxDigits && candidate ? (
+                    <div className="flex gap-4 items-start">
+                      <div className="w-[130px] h-[160px] border border-black/20 bg-white overflow-hidden flex items-center justify-center">
+                        {candidate.photo ? (
+                          <img src={candidate.photo} alt={candidate.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xs text-zinc-500 px-2 text-center">Sem imagem</span>
+                        )}
                       </div>
-                    ) : (
                       <div>
-                        <p className="font-bold text-destructive text-lg">VOTO NULO</p>
-                        <p className="text-xs opacity-60 mt-1">
-                          Número não corresponde a nenhum candidato
-                        </p>
+                        <p className="text-sm text-zinc-500">Nome:</p>
+                        <p className="font-bold text-xl">{candidate.name}</p>
+                        <p className="text-sm text-zinc-500 mt-3">Turma:</p>
+                        <p className="text-lg">{candidate.turma}</p>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Candidate list hint */}
-              <div className="mt-auto pt-3 border-t border-urna-screen-foreground/10">
-                <p className="text-[10px] opacity-50 mb-1">Candidatos:</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                  {turma.candidates.map((c) => (
-                    <span key={c.number} className="text-[11px] opacity-60">
-                      <strong>{c.number}</strong> — {c.name.split(" ").slice(0, 2).join(" ")}
-                    </span>
-                  ))}
+                    </div>
+                  ) : digits.length === maxDigits ? (
+                    <div>
+                      <p className="font-black text-4xl text-red-600">VOTO NULO</p>
+                      <p className="text-zinc-600">Número não corresponde a nenhum candidato.</p>
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            </>
+
+              <div className="border-t border-black/20 pt-3 text-sm text-zinc-600">
+                Digite o número do candidato e pressione <strong>CONFIRMA</strong>.
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Keypad */}
-        <div className="p-4 pt-2">
-          <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
-              <button
-                key={n}
-                onClick={() => handleDigit(String(n))}
-                className={`h-12 rounded-lg bg-urna-key text-urna-key-foreground font-mono-display text-xl font-bold transition-all hover:bg-urna-key-hover active:scale-95 ${
-                  n === 0 ? "col-start-2" : ""
-                }`}
-              >
-                {n}
-              </button>
-            ))}
+        <div className="bg-[#666062] border border-black/10 rounded-sm overflow-hidden">
+          <div className="bg-[#f5f5f3] h-[92px] grid grid-cols-[120px_1fr] items-center">
+            <div className="h-full bg-[#202683] text-white flex items-center justify-center text-xs font-bold text-center p-2">
+              CEEPS
+            </div>
+            <div className="text-center leading-tight">
+              <p className="text-5xl font-black tracking-wide">CEEPS</p>
+              <p className="text-3xl font-black tracking-wide">ELEITORAL</p>
+            </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-2 mt-4 justify-center">
-            <button
-              onClick={handleCorrect}
-              className="px-5 py-2.5 rounded-lg bg-urna-correct text-secondary-foreground font-bold text-sm uppercase tracking-wider transition-all hover:brightness-110 active:scale-95"
-            >
-              Corrige
-            </button>
-            <button
-              onClick={handleBlank}
-              className="px-5 py-2.5 rounded-lg bg-urna-blank text-secondary-foreground font-bold text-sm uppercase tracking-wider transition-all hover:brightness-95 active:scale-95"
-            >
-              Branco
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={digits.length < maxDigits}
-              className="px-5 py-2.5 rounded-lg bg-urna-confirm text-primary-foreground font-bold text-sm uppercase tracking-wider transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Confirma
-            </button>
+          <div className="p-7">
+            <div className="grid grid-cols-3 gap-4 max-w-[290px] mx-auto">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => handleDigit(String(n))}
+                  className={`h-20 rounded-[24px] bg-black text-white text-6xl font-black transition-all hover:opacity-90 active:scale-95 ${
+                    n === 0 ? "col-start-2" : ""
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-8 justify-center">
+              <button
+                onClick={handleBlank}
+                className="h-16 px-6 rounded-[22px] bg-white text-black font-black text-3xl uppercase"
+              >
+                Branco
+              </button>
+              <button
+                onClick={handleCorrect}
+                className="h-16 px-6 rounded-[22px] bg-[#ee9133] text-black font-black text-3xl uppercase"
+              >
+                Corrige
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={digits.length < maxDigits}
+                className="h-16 px-6 rounded-[22px] bg-[#0dd16f] text-black font-black text-3xl uppercase disabled:opacity-40"
+              >
+                Confirma
+              </button>
+            </div>
           </div>
         </div>
       </div>

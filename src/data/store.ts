@@ -1,4 +1,4 @@
-import { Turma, Candidate, TURMAS as DEFAULT_TURMAS } from "./turmas";
+import { Turma, TURMAS as DEFAULT_TURMAS } from "./turmas";
 
 export interface AdminUser {
   id: string;
@@ -9,25 +9,35 @@ export interface AdminUser {
 const TURMAS_KEY = "urna_turmas";
 const ADMINS_KEY = "urna_admins";
 
+function readLocal<T>(key: string): T | null {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function writeLocal<T>(key: string, data: T) {
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
 // --- Turmas ---
 
 export function getTurmas(): Turma[] {
-  const stored = localStorage.getItem(TURMAS_KEY);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return [...DEFAULT_TURMAS];
-    }
-  }
-  // Initialize with defaults
+  const stored = readLocal<Turma[]>(TURMAS_KEY);
+  if (stored) return stored;
+
   const initial = [...DEFAULT_TURMAS];
-  localStorage.setItem(TURMAS_KEY, JSON.stringify(initial));
+  writeLocal(TURMAS_KEY, initial);
   return initial;
 }
 
 export function saveTurmas(turmas: Turma[]) {
-  localStorage.setItem(TURMAS_KEY, JSON.stringify(turmas));
+  writeLocal(TURMAS_KEY, turmas);
 }
 
 export function addTurma(turma: Turma) {
@@ -56,16 +66,11 @@ export function deleteTurma(id: string) {
 // --- Admins ---
 
 export function getAdmins(): AdminUser[] {
-  const stored = localStorage.getItem(ADMINS_KEY);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return getDefaultAdmins();
-    }
-  }
+  const stored = readLocal<AdminUser[]>(ADMINS_KEY);
+  if (stored) return stored;
+
   const initial = getDefaultAdmins();
-  localStorage.setItem(ADMINS_KEY, JSON.stringify(initial));
+  writeLocal(ADMINS_KEY, initial);
   return initial;
 }
 
@@ -74,7 +79,7 @@ function getDefaultAdmins(): AdminUser[] {
 }
 
 export function saveAdmins(admins: AdminUser[]) {
-  localStorage.setItem(ADMINS_KEY, JSON.stringify(admins));
+  writeLocal(ADMINS_KEY, admins);
 }
 
 export function addAdmin(admin: AdminUser) {
