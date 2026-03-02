@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { TURMAS, Turma } from "@/data/turmas";
+import { getTurmas } from "@/data/store";
+import { Turma } from "@/data/turmas";
 import { Vote } from "lucide-react";
 
 interface TurmaSelectionProps {
   onSelect: (turma: Turma) => void;
+  onAdmin: () => void;
 }
 
-const TurmaSelection = ({ onSelect }: TurmaSelectionProps) => {
+const TurmaSelection = ({ onSelect, onAdmin }: TurmaSelectionProps) => {
+  const turmas = getTurmas();
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 gap-8">
       <div className="text-center space-y-3">
@@ -20,25 +24,33 @@ const TurmaSelection = ({ onSelect }: TurmaSelectionProps) => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
-        {TURMAS.map((turma) => (
+        {turmas.map((turma) => (
           <button
             key={turma.id}
             onClick={() => onSelect(turma)}
             className="group relative overflow-hidden rounded-xl bg-card border border-border p-6 text-left transition-all hover:border-primary hover:shadow-lg hover:shadow-primary/10"
           >
             <div className="relative z-10">
-              <p className="text-xs font-semibold tracking-widest uppercase text-primary mb-1">
-                Turma
-              </p>
+              <p className="text-xs font-semibold tracking-widest uppercase text-primary mb-1">Turma</p>
               <p className="text-2xl font-bold">{turma.name}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {turma.candidates.length} candidatos
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">{turma.candidates.length} candidatos</p>
             </div>
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         ))}
       </div>
+
+      {turmas.length === 0 && (
+        <p className="text-muted-foreground text-sm">Nenhuma turma cadastrada. Acesse o painel de gestão para adicionar.</p>
+      )}
+
+      {/* Admin link */}
+      <button
+        onClick={onAdmin}
+        className="text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors mt-4"
+      >
+        ⚙ Painel de Gestão
+      </button>
     </div>
   );
 };

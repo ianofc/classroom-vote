@@ -1,5 +1,6 @@
+import { useRef } from "react";
 import { Turma, VoteResult } from "@/data/turmas";
-import { BarChart3, Trophy, ArrowLeft } from "lucide-react";
+import { BarChart3, Trophy, ArrowLeft, Printer } from "lucide-react";
 
 interface ResultsProps {
   turma: Turma;
@@ -10,12 +11,70 @@ interface ResultsProps {
 }
 
 const Results = ({ turma, results, blanks, nulls, onBack }: ResultsProps) => {
+  const printRef = useRef<HTMLDivElement>(null);
   const totalVotes = results.reduce((s, r) => s + r.votes, 0) + blanks + nulls;
   const sorted = [...results].sort((a, b) => b.votes - a.votes);
-  const maxVotes = sorted.length > 0 ? sorted[0].votes : 0;
+
+  const handlePrint = () => {
+    const content = printRef.current;
+    if (!content) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html>
+        <head>
+          <title>Resultado — ${turma.name}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 40px; color: #1a1a1a; }
+            h1 { font-size: 22px; margin-bottom: 4px; }
+            .sub { color: #666; font-size: 13px; margin-bottom: 24px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 14px; }
+            th { background: #f5f5f5; font-weight: 600; }
+            .winner { font-weight: 700; }
+            .footer { margin-top: 16px; font-size: 12px; color: #999; }
+            .summary { display: flex; gap: 24px; margin-bottom: 20px; }
+            .summary-item { text-align: center; }
+            .summary-item .label { font-size: 11px; color: #666; text-transform: uppercase; }
+            .summary-item .value { font-size: 20px; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <h1>Resultado da Eleição — ${turma.name}</h1>
+          <p class="sub">${totalVotes} voto(s) computado(s)</p>
+          <table>
+            <thead><tr><th>Pos.</th><th>Candidato</th><th>Nº</th><th>Votos</th><th>%</th></tr></thead>
+            <tbody>
+              ${sorted
+                .map(
+                  (r, i) =>
+                    `<tr class="${i === 0 && r.votes > 0 ? "winner" : ""}">
+                      <td>${i + 1}</td>
+                      <td>${r.candidateName}</td>
+                      <td>${r.candidateNumber}</td>
+                      <td>${r.votes}</td>
+                      <td>${totalVotes > 0 ? ((r.votes / totalVotes) * 100).toFixed(1) : 0}%</td>
+                    </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>
+          <div class="summary">
+            <div class="summary-item"><div class="label">Brancos</div><div class="value">${blanks}</div></div>
+            <div class="summary-item"><div class="label">Nulos</div><div class="value">${nulls}</div></div>
+            <div class="summary-item"><div class="label">Total</div><div class="value">${totalVotes}</div></div>
+          </div>
+          <p class="footer">Documento gerado automaticamente — Urna Eletrônica Escolar</p>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.print();
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 gap-8">
+    <div ref={printRef} className="flex flex-col items-center justify-center min-h-screen p-6 gap-8">
       <div className="text-center space-y-2">
         <div className="flex items-center justify-center gap-2">
           <BarChart3 className="w-8 h-8 text-primary" />
@@ -55,7 +114,6 @@ const Results = ({ turma, results, blanks, nulls, onBack }: ResultsProps) => {
           );
         })}
 
-        {/* Brancos e Nulos */}
         <div className="flex gap-3 mt-2">
           <div className="flex-1 bg-card border border-border rounded-xl p-3 text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Brancos</p>
@@ -68,13 +126,20 @@ const Results = ({ turma, results, blanks, nulls, onBack }: ResultsProps) => {
         </div>
       </div>
 
-      <button
-        onClick={onBack}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Nova eleição
-      </button>
+      <div className="flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" /> Nova eleição
+        </button>
+        <button
+          onClick={handlePrint}
+          className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold hover:brightness-110 transition-all"
+        >
+          <Printer className="w-4 h-4" /> Imprimir / PDF
+        </button>
+      </div>
     </div>
   );
 };
