@@ -2,17 +2,20 @@ import { useState, useCallback } from "react";
 import TurmaSelection from "@/components/TurmaSelection";
 import Urna from "@/components/Urna";
 import Results from "@/components/Results";
+import AdminPanel from "@/components/AdminPanel";
 import { Turma, VoteResult } from "@/data/turmas";
-import { Users } from "lucide-react";
+import { Users, ShieldCheck } from "lucide-react";
 
-type Phase = "select" | "setup" | "voting" | "results";
+type Phase = "select" | "setup" | "voting" | "results" | "admin";
+
+const ADMIN_PASSWORD = "admin123";
 
 const Index = () => {
   const [phase, setPhase] = useState<Phase>("select");
   const [turma, setTurma] = useState<Turma | null>(null);
   const [totalVoters, setTotalVoters] = useState(10);
   const [currentVoter, setCurrentVoter] = useState(1);
-  const [votes, setVotes] = useState<{ number: number; type: "candidate" | "branco" | "nulo" }[]>([]);
+  const [votes, setVotes] = useState<{ number: number; type: "candidate" | "branco" | "nulo"; voterIndex: number }[]>([]);
 
   const handleSelectTurma = (t: Turma) => {
     setTurma(t);
@@ -27,7 +30,7 @@ const Index = () => {
 
   const handleVote = useCallback(
     (vote: { number: number; type: "candidate" | "branco" | "nulo" }) => {
-      setVotes((prev) => [...prev, vote]);
+      setVotes((prev) => [...prev, { ...vote, voterIndex: currentVoter }]);
       if (currentVoter >= totalVoters) {
         setTimeout(() => setPhase("results"), 400);
       } else {
@@ -39,16 +42,13 @@ const Index = () => {
 
   const getResults = (): { results: VoteResult[]; blanks: number; nulls: number } => {
     if (!turma) return { results: [], blanks: 0, nulls: 0 };
-
     const blanks = votes.filter((v) => v.type === "branco").length;
     const nulls = votes.filter((v) => v.type === "nulo").length;
-
     const results: VoteResult[] = turma.candidates.map((c) => ({
       candidateNumber: c.number,
       candidateName: c.name,
       votes: votes.filter((v) => v.type === "candidate" && v.number === c.number).length,
     }));
-
     return { results, blanks, nulls };
   };
 
@@ -57,6 +57,15 @@ const Index = () => {
     setTurma(null);
     setVotes([]);
     setCurrentVoter(1);
+  };
+
+  const handleOpenAdmin = () => {
+    const password = prompt("Digite a senha de administrador:");
+    if (password === ADMIN_PASSWORD) {
+      setPhase("admin");
+    } else if (password !== null) {
+      alert("Senha incorreta!");
+    }
   };
 
   if (phase === "select") {
@@ -120,19 +129,61 @@ const Index = () => {
 
   if (phase === "voting" && turma) {
     return (
-      <Urna
+      <div className="relative">
+        <Urna
+          turma={turma}
+          onVoteConfirmed={handleVote}
+          onBack={handleReset}
+          voterNumber={currentVoter}
+          totalVoters={totalVoters}
+        />
+        {/* Admin access button - discreet */}
+        <button
+          onClick={handleOpenAdmin}
+          className="fixed bottom-4 right-4 w-10 h-10 rounded-full bg-muted/60 hover:bg-muted border border-border flex items-center justify-center transition-all opacity-30 hover:opacity-100"
+          title="Área de gestão"
+        >
+          <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "admin" && turma) {
+    const votingComplete = votes.length >= totalVoters;
+    return (
+      <AdminPanel
         turma={turma}
-        onVoteConfirmed={handleVote}
-        onBack={handleReset}
-        voterNumber={currentVoter}
+        votes={votes}
         totalVoters={totalVoters}
+        currentVoter={currentVoter}
+        votingComplete={votingComplete}
+        onBack={() => {
+          if (votes.length >= totalVoters) {
+            setPhase("results");
+          } else {
+            setPhase("voting");
+          }
+        }}
       />
     );
   }
 
   if (phase === "results" && turma) {
     const { results, blanks, nulls } = getResults();
-    return <Results turma={turma} results={results} blanks={blanks} nulls={nulls} onBack={handleReset} />;
+    return (
+      <div className="relative">
+        <Results turma={turma} results={results} blanks={blanks} nulls={nulls} onBack={handleReset} />
+        {/* Admin access on results too */}
+        <button
+          onClick={() => setPhase("admin")}
+          className="fixed bottom-4 right-4 w-10 h-10 rounded-full bg-muted/60 hover:bg-muted border border-border flex items-center justify-center transition-all opacity-30 hover:opacity-100"
+          title="Área de gestão"
+        >
+          <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </div>
+    );
   }
 
   return null;
