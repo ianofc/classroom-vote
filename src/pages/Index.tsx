@@ -4,11 +4,10 @@ import Urna from "@/components/Urna";
 import Results from "@/components/Results";
 import AdminPanel from "@/components/AdminPanel";
 import { Turma, VoteResult } from "@/data/turmas";
+import { getTurmas, validateAdmin } from "@/data/store";
 import { Users, ShieldCheck } from "lucide-react";
 
 type Phase = "select" | "setup" | "voting" | "results" | "admin";
-
-const ADMIN_PASSWORD = "admin123";
 
 const Index = () => {
   const [phase, setPhase] = useState<Phase>("select");
@@ -16,6 +15,7 @@ const Index = () => {
   const [totalVoters, setTotalVoters] = useState(10);
   const [currentVoter, setCurrentVoter] = useState(1);
   const [votes, setVotes] = useState<{ number: number; type: "candidate" | "branco" | "nulo"; voterIndex: number }[]>([]);
+  const [, setRefreshKey] = useState(0);
 
   const handleSelectTurma = (t: Turma) => {
     setTurma(t);
@@ -60,16 +60,23 @@ const Index = () => {
   };
 
   const handleOpenAdmin = () => {
-    const password = prompt("Digite a senha de administrador:");
-    if (password === ADMIN_PASSWORD) {
+    const username = prompt("Usuário administrador:");
+    if (!username) return;
+    const password = prompt("Senha:");
+    if (!password) return;
+    if (validateAdmin(username, password)) {
       setPhase("admin");
-    } else if (password !== null) {
-      alert("Senha incorreta!");
+    } else {
+      alert("Credenciais incorretas!");
     }
   };
 
+  const handleTurmasChanged = () => {
+    setRefreshKey((k) => k + 1);
+  };
+
   if (phase === "select") {
-    return <TurmaSelection onSelect={handleSelectTurma} />;
+    return <TurmaSelection onSelect={handleSelectTurma} onAdmin={handleOpenAdmin} />;
   }
 
   if (phase === "setup" && turma) {
@@ -137,7 +144,6 @@ const Index = () => {
           voterNumber={currentVoter}
           totalVoters={totalVoters}
         />
-        {/* Admin access button - discreet */}
         <button
           onClick={handleOpenAdmin}
           className="fixed bottom-4 right-4 w-10 h-10 rounded-full bg-muted/60 hover:bg-muted border border-border flex items-center justify-center transition-all opacity-30 hover:opacity-100"
@@ -149,8 +155,8 @@ const Index = () => {
     );
   }
 
-  if (phase === "admin" && turma) {
-    const votingComplete = votes.length >= totalVoters;
+  if (phase === "admin") {
+    const votingComplete = turma ? votes.length >= totalVoters : false;
     return (
       <AdminPanel
         turma={turma}
@@ -159,12 +165,15 @@ const Index = () => {
         currentVoter={currentVoter}
         votingComplete={votingComplete}
         onBack={() => {
-          if (votes.length >= totalVoters) {
+          if (!turma) {
+            setPhase("select");
+          } else if (votes.length >= totalVoters) {
             setPhase("results");
           } else {
             setPhase("voting");
           }
         }}
+        onTurmasChanged={handleTurmasChanged}
       />
     );
   }
@@ -174,9 +183,8 @@ const Index = () => {
     return (
       <div className="relative">
         <Results turma={turma} results={results} blanks={blanks} nulls={nulls} onBack={handleReset} />
-        {/* Admin access on results too */}
         <button
-          onClick={() => setPhase("admin")}
+          onClick={handleOpenAdmin}
           className="fixed bottom-4 right-4 w-10 h-10 rounded-full bg-muted/60 hover:bg-muted border border-border flex items-center justify-center transition-all opacity-30 hover:opacity-100"
           title="Área de gestão"
         >
