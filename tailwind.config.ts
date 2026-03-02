@@ -47,6 +47,17 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        urna: {
+          body: "hsl(var(--urna-body))",
+          screen: "hsl(var(--urna-screen))",
+          "screen-foreground": "hsl(var(--urna-screen-foreground))",
+          key: "hsl(var(--urna-key))",
+          "key-foreground": "hsl(var(--urna-key-foreground))",
+          "key-hover": "hsl(var(--urna-key-hover))",
+          confirm: "hsl(var(--urna-confirm))",
+          correct: "hsl(var(--urna-correct))",
+          blank: "hsl(var(--urna-blank))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
