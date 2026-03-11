@@ -71,3 +71,43 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Persistência real com Supabase (CRUD + relatórios)
+
+Para elevar a segurança e garantir dados reais de votação, o projeto agora suporta persistência no Supabase.
+
+### 1) Variáveis de ambiente
+
+Copie `.env.example` para `.env` e preencha a chave anon:
+
+```sh
+cp .env.example .env
+```
+
+### 2) Estrutura mínima no banco
+
+Execute no SQL Editor do Supabase:
+
+```sql
+create table if not exists vote_sessions (
+  id uuid primary key default gen_random_uuid(),
+  turma_id text not null,
+  turma_name text not null,
+  total_voters integer not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists votes (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references vote_sessions(id) on delete cascade,
+  turma_id text not null,
+  candidate_number integer,
+  vote_type text not null check (vote_type in ('candidate', 'branco', 'nulo')),
+  voter_index integer not null,
+  created_at timestamptz not null default now()
+);
+```
+
+### 3) Segurança
+
+Ative RLS nas tabelas e crie policies de acordo com o fluxo da escola (acesso autenticado para gestão).

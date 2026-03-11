@@ -4,7 +4,8 @@ import Urna from "@/components/Urna";
 import Results from "@/components/Results";
 import AdminPanel from "@/components/AdminPanel";
 import { Turma, VoteResult } from "@/data/turmas";
-import { getTurmas, validateAdmin } from "@/data/store";
+import { validateAdmin } from "@/data/store";
+import { createVoteSession, saveVoteToSession } from "@/data/votes";
 import { Users, ShieldCheck } from "lucide-react";
 
 type Phase = "select" | "setup" | "voting" | "results" | "admin";
@@ -16,28 +17,38 @@ const Index = () => {
   const [currentVoter, setCurrentVoter] = useState(1);
   const [votes, setVotes] = useState<{ number: number; type: "candidate" | "branco" | "nulo"; voterIndex: number }[]>([]);
   const [, setRefreshKey] = useState(0);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   const handleSelectTurma = (t: Turma) => {
     setTurma(t);
     setPhase("setup");
   };
 
-  const handleStartVoting = () => {
+  const handleStartVoting = async () => {
     setVotes([]);
     setCurrentVoter(1);
+    if (turma) {
+      const sessionId = await createVoteSession(turma, totalVoters);
+      setCurrentSessionId(sessionId);
+    }
     setPhase("voting");
   };
 
   const handleVote = useCallback(
     (vote: { number: number; type: "candidate" | "branco" | "nulo" }) => {
-      setVotes((prev) => [...prev, { ...vote, voterIndex: currentVoter }]);
+      const voteRecord = { ...vote, voterIndex: currentVoter };
+      setVotes((prev) => [...prev, voteRecord]);
+      if (turma) {
+        void saveVoteToSession(currentSessionId, turma.id, voteRecord);
+      }
+
       if (currentVoter >= totalVoters) {
         setTimeout(() => setPhase("results"), 400);
       } else {
         setCurrentVoter((v) => v + 1);
       }
     },
-    [currentVoter, totalVoters]
+    [currentSessionId, currentVoter, totalVoters, turma]
   );
 
   const getResults = (): { results: VoteResult[]; blanks: number; nulls: number } => {
@@ -57,6 +68,7 @@ const Index = () => {
     setTurma(null);
     setVotes([]);
     setCurrentVoter(1);
+    setCurrentSessionId(null);
   };
 
   const handleOpenAdmin = () => {
@@ -174,6 +186,7 @@ const Index = () => {
           }
         }}
         onTurmasChanged={handleTurmasChanged}
+        sessionId={currentSessionId}
       />
     );
   }
