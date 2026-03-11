@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Turma } from "@/data/turmas";
 import { ArrowLeft, ShieldCheck, Hash, User, AlertTriangle, Lock, Eye, EyeOff, GraduationCap, Printer } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
@@ -25,6 +25,74 @@ type Tab = "votes" | "turmas" | "admins";
 const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(turma ? "votes" : "turmas");
+
+  const printVotesReport = () => {
+    if (!turma) return;
+
+    const escapeHtml = (text: string) =>
+      text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+
+    const candidateRows = turma.candidates
+      .map((candidate) => {
+        const total = votes.filter((vote) => vote.type === "candidate" && vote.number === candidate.number).length;
+        return `<tr><td>${candidate.number}</td><td>${escapeHtml(candidate.name)}</td><td>${total}</td></tr>`;
+      })
+      .join("");
+
+    const report = `
+      <html>
+        <head>
+          <title>Relatório de votos - ${escapeHtml(turma.name)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+            h1 { margin: 0 0 4px 0; }
+            p { margin: 4px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            th { background: #f3f3f3; }
+            .totals { margin-top: 16px; display: grid; gap: 4px; }
+          </style>
+        </head>
+        <body>
+          <h1>Relatório de votos por turma</h1>
+          <p><strong>Turma:</strong> ${escapeHtml(turma.name)}</p>
+          <p><strong>Total de eleitores configurados:</strong> ${totalVoters}</p>
+          <p><strong>Total de votos registrados:</strong> ${votes.length}</p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Candidato</th>
+                <th>Soma de votos</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${candidateRows}
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <p><strong>Brancos:</strong> ${votes.filter((vote) => vote.type === "branco").length}</p>
+            <p><strong>Nulos:</strong> ${votes.filter((vote) => vote.type === "nulo").length}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(report);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   const getCandidateName = (vote: Vote) => {
     if (!turma) return "—";
@@ -96,7 +164,16 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted-foreground">Progresso da Votação</span>
-                <span className="text-sm font-bold font-mono-display">{votes.length} / {totalVoters} votos</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={printVotesReport}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted transition-colors"
+                    title="Imprimir relatório"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Imprimir relatório
+                  </button>
+                  <span className="text-sm font-bold font-mono-display">{votes.length} / {totalVoters} votos</span>
+                </div>
               </div>
               <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
                 <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
