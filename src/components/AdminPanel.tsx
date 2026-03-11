@@ -27,7 +27,7 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, s
     const totalsByCandidate: Record<number, number> = {};
 
     votes.forEach((vote) => {
-      if (vote.type === "candidate") {
+      if (vote.type === "candidate" && vote.number !== undefined) {
         totalsByCandidate[vote.number] = (totalsByCandidate[vote.number] ?? 0) + 1;
       }
     });
@@ -53,6 +53,7 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, s
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
 
+    // Prioriza dados da sessão (nuvem) ou reconstrói localmente
     const reportData = sessionId ? (await getSessionVoteReport(sessionId)) ?? buildLocalReport() : buildLocalReport();
 
     const candidateRows = turma.candidates
@@ -90,7 +91,7 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, s
                 <th>Soma de votos</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="candidate-rows">
               ${candidateRows}
             </tbody>
           </table>
@@ -114,9 +115,12 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, s
     printWindow.document.write(report);
     printWindow.document.close();
     printWindow.focus();
-    printWindow.print();
-
-    setIsPrinting(false);
+    
+    // Pequeno delay para garantir renderização antes da impressão
+    setTimeout(() => {
+      printWindow.print();
+      setIsPrinting(false);
+    }, 250);
   };
 
   const getCandidateName = (vote: VoteRecord) => {
