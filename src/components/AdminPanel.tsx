@@ -1,33 +1,49 @@
 import { useState } from "react";
 import { Turma } from "@/data/turmas";
+import { getSessionVoteReport, VoteRecord, VoteReport } from "@/data/votes";
 import { ArrowLeft, ShieldCheck, Hash, User, AlertTriangle, Lock, Eye, EyeOff, GraduationCap, Printer } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
 
-interface Vote {
-  number: number;
-  type: "candidate" | "branco" | "nulo";
-  voterIndex: number;
-}
-
 interface AdminPanelProps {
   turma: Turma | null;
-  votes: Vote[];
+  votes: VoteRecord[];
   totalVoters: number;
   currentVoter: number;
   votingComplete: boolean;
+  sessionId: string | null;
   onBack: () => void;
   onTurmasChanged: () => void;
 }
 
 type Tab = "votes" | "turmas" | "admins";
 
-const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, onBack, onTurmasChanged }: AdminPanelProps) => {
+const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, sessionId, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(turma ? "votes" : "turmas");
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  const printVotesReport = () => {
+  const buildLocalReport = (): VoteReport => {
+    const totalsByCandidate: Record<number, number> = {};
+
+    votes.forEach((vote) => {
+      if (vote.type === "candidate" && vote.number !== undefined) {
+        totalsByCandidate[vote.number] = (totalsByCandidate[vote.number] ?? 0) + 1;
+      }
+    });
+
+    return {
+      totalsByCandidate,
+      blanks: votes.filter((vote) => vote.type === "branco").length,
+      nulls: votes.filter((vote) => vote.type === "nulo").length,
+      totalVotes: votes.length,
+    };
+  };
+
+  const printVotesReport = async () => {
     if (!turma) return;
+
+    setIsPrinting(true);
 
     const escapeHtml = (text: string) =>
       text
@@ -37,9 +53,12 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
 
+    // Prioriza dados da sessão (nuvem) ou reconstrói localmente
+    const reportData = sessionId ? (await getSessionVoteReport(sessionId)) ?? buildLocalReport() : buildLocalReport();
+
     const candidateRows = turma.candidates
       .map((candidate) => {
-        const total = votes.filter((vote) => vote.type === "candidate" && vote.number === candidate.number).length;
+        const total = reportData.totalsByCandidate[candidate.number] ?? 0;
         return `<tr><td>${candidate.number}</td><td>${escapeHtml(candidate.name)}</td><td>${total}</td></tr>`;
       })
       .join("");
@@ -62,7 +81,7 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
           <h1>Relatório de votos por turma</h1>
           <p><strong>Turma:</strong> ${escapeHtml(turma.name)}</p>
           <p><strong>Total de eleitores configurados:</strong> ${totalVoters}</p>
-          <p><strong>Total de votos registrados:</strong> ${votes.length}</p>
+          <p><strong>Total de votos registrados:</strong> ${reportData.totalVotes}</p>
 
           <table>
             <thead>
@@ -72,29 +91,39 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
                 <th>Soma de votos</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="candidate-rows">
               ${candidateRows}
             </tbody>
           </table>
 
           <div class="totals">
-            <p><strong>Brancos:</strong> ${votes.filter((vote) => vote.type === "branco").length}</p>
-            <p><strong>Nulos:</strong> ${votes.filter((vote) => vote.type === "nulo").length}</p>
+            <p><strong>Brancos:</strong> ${reportData.blanks}</p>
+            <p><strong>Nulos:</strong> ${reportData.nulls}</p>
+            <p><strong>Gerado em:</strong> ${new Date().toLocaleString("pt-BR")}</p>
           </div>
         </body>
       </html>
     `;
 
     const printWindow = window.open("", "_blank", "width=900,height=700");
-    if (!printWindow) return;
+    if (!printWindow) {
+      setIsPrinting(false);
+      return;
+    }
+
     printWindow.document.open();
     printWindow.document.write(report);
     printWindow.document.close();
     printWindow.focus();
-    printWindow.print();
+    
+    // Pequeno delay para garantir renderização antes da impressão
+    setTimeout(() => {
+      printWindow.print();
+      setIsPrinting(false);
+    }, 250);
   };
 
-  const getCandidateName = (vote: Vote) => {
+  const getCandidateName = (vote: VoteRecord) => {
     if (!turma) return "—";
     if (vote.type === "branco") return "BRANCO";
     if (vote.type === "nulo") return "NULO";
@@ -102,7 +131,7 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
     return candidate ? candidate.name : "Desconhecido";
   };
 
-  const getVoteTypeColor = (type: Vote["type"]) => {
+  const getVoteTypeColor = (type: VoteRecord["type"]) => {
     switch (type) {
       case "candidate": return "text-primary";
       case "branco": return "text-muted-foreground";
@@ -120,7 +149,6 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
 
   return (
     <div className="flex flex-col items-center min-h-screen p-6 gap-6">
-      {/* Header */}
       <div className="w-full max-w-2xl">
         <div className="flex items-center gap-3 mb-4">
           <button
@@ -139,7 +167,6 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="w-full max-w-2xl flex gap-1 bg-muted rounded-xl p-1">
         {tabs.map((tab) => (
           <button
@@ -156,21 +183,20 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
         ))}
       </div>
 
-      {/* Tab Content */}
       <div className="w-full max-w-2xl">
         {activeTab === "votes" && turma && (
           <div className="space-y-4">
-            {/* Status */}
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted-foreground">Progresso da Votação</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={printVotesReport}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted transition-colors"
+                    disabled={isPrinting}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted transition-colors disabled:opacity-50"
                     title="Imprimir relatório"
                   >
-                    <Printer className="w-3.5 h-3.5" /> Imprimir relatório
+                    <Printer className="w-3.5 h-3.5" /> {isPrinting ? "Gerando..." : "Imprimir relatório"}
                   </button>
                   <span className="text-sm font-bold font-mono-display">{votes.length} / {totalVoters} votos</span>
                 </div>
@@ -191,7 +217,6 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
               </div>
             </div>
 
-            {/* Vote Log */}
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <h2 className="font-bold text-sm flex items-center gap-2">
@@ -234,7 +259,6 @@ const AdminPanel = ({ turma, votes, totalVoters, currentVoter, votingComplete, o
               )}
             </div>
 
-            {/* Summary when complete */}
             {votingComplete && (
               <div className="bg-card border border-border rounded-xl p-4 space-y-3">
                 <h2 className="font-bold text-sm flex items-center gap-2">
