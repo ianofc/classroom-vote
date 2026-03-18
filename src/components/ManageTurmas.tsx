@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Turma, Candidate } from "@/data/turmas";
-import { supabase } from "@/data/votes";
+import { supabase } from "@/lib/supabase";
 import { Trash2, Plus, Image as ImageIcon, Upload, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
