@@ -1,5 +1,19 @@
 import { useState, useCallback, useEffect } from "react";
 import { Turma } from "@/data/turmas";
+import jsPDF from 'jspdf';
+
+const generateVoterReceipt = (voterData, vote, candidateName, turmaName) => {
+  const doc = new jsPDF();
+  doc.setFontSize(18);
+  doc.text("Comprovante de Votação - CEEPS", 20, 20);
+  doc.setFontSize(12);
+  doc.text(`Eleitor: ${voterData.name}`, 20, 40);
+  doc.text(`Documento: ${voterData.document}`, 20, 50);
+  doc.text(`Turma: ${turmaName}`, 20, 60);
+  doc.text(`Candidato/Chapa: ${vote.type === 'candidate' ? candidateName : vote.type.toUpperCase()}`, 20, 70);
+  doc.text(`Data: ${new Date().toLocaleString()}`, 20, 80);
+  doc.save(`voto_${voterData.document}.pdf`);
+};
 
 interface UrnaProps {
   turma: Turma;
