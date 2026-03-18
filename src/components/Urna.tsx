@@ -1,76 +1,92 @@
 import { useState, useCallback, useEffect } from "react";
 import { Turma } from "@/data/turmas";
-import jsPDF from 'jspdf';
+import { UserCheck, ShieldCheck, Moon, Sun } from "lucide-react";
 
-const generateVoterReceipt = (voterData, vote, candidateName, turmaName) => {
-  const doc = new jsPDF();
-  doc.setFontSize(18);
-  doc.text("Comprovante de Votação - CEEPS", 20, 20);
-  doc.setFontSize(12);
-  doc.text(`Eleitor: ${voterData.name}`, 20, 40);
-  doc.text(`Documento: ${voterData.document}`, 20, 50);
-  doc.text(`Turma: ${turmaName}`, 20, 60);
-  doc.text(`Candidato/Chapa: ${vote.type === 'candidate' ? candidateName : vote.type.toUpperCase()}`, 20, 70);
-  doc.text(`Data: ${new Date().toLocaleString()}`, 20, 80);
-  doc.save(`voto_${voterData.document}.pdf`);
-};
+interface VoterData {
+  name: string;
+  document: string;
+  contact: string;
+}
 
 interface UrnaProps {
   turma: Turma;
-  onVoteConfirmed: (vote: { number: number; type: "candidate" | "branco" | "nulo" }) => void;
+  onVoteConfirmed: (vote: { number: number; type: "candidate" | "branco" | "nulo" }, voterData: VoterData) => void;
   onBack: () => void;
   voterNumber: number;
   totalVoters: number;
 }
 
 const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: UrnaProps) => {
+  // Etapas: 'mesario' (identificação) -> 'urna' (votação)
+  const [step, setStep] = useState<'mesario' | 'urna'>('mesario');
+  const [voterData, setVoterData] = useState<VoterData>({ name: "", document: "", contact: "" });
+  
+  // Tema (Dark/Light Mode)
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Estados da Urna
   const [digits, setDigits] = useState<string>("");
   const [confirmed, setConfirmed] = useState(false);
   const [showEndAnim, setShowEndAnim] = useState(false);
 
-  const maxDigits = 2;
+  const maxDigits = 2; // Pode ajustar conforme a necessidade (ex: 5 para vereador)
   const candidate = digits.length === maxDigits
     ? turma.candidates.find((c) => c.number === parseInt(digits))
     : null;
 
-  const handleDigit = useCallback((d: string) => {
-    if (confirmed) return;
-    if (digits.length < maxDigits) {
-      setDigits((prev) => prev + d);
+  useEffect(() => {
+    // Aplica a classe dark no elemento html principal
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
-  }, [digits, confirmed]);
+  }, [isDarkMode]);
+
+  const handleLiberarUrna = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!voterData.name || !voterData.document) return;
+    setStep('urna');
+  };
+
+  // --- Lógicas do Teclado da Urna ---
+  const handleDigit = useCallback((d: string) => {
+    if (confirmed || step !== 'urna') return;
+    if (digits.length < maxDigits) setDigits((prev) => prev + d);
+  }, [digits, confirmed, step]);
 
   const handleCorrect = useCallback(() => {
-    if (confirmed) return;
+    if (confirmed || step !== 'urna') return;
     setDigits("");
-  }, [confirmed]);
+  }, [confirmed, step]);
 
   const handleBlank = useCallback(() => {
-    if (confirmed) return;
+    if (confirmed || step !== 'urna') return;
     setDigits("");
     setShowEndAnim(true);
     setTimeout(() => {
       setShowEndAnim(false);
-      onVoteConfirmed({ number: -1, type: "branco" });
-    }, 1200);
+      onVoteConfirmed({ number: -1, type: "branco" }, voterData);
+    }, 1500);
     setConfirmed(true);
-  }, [confirmed, onVoteConfirmed]);
+  }, [confirmed, onVoteConfirmed, voterData, step]);
 
   const handleConfirm = useCallback(() => {
-    if (confirmed || digits.length < maxDigits) return;
+    if (confirmed || digits.length < maxDigits || step !== 'urna') return;
     setShowEndAnim(true);
     setTimeout(() => {
       setShowEndAnim(false);
       onVoteConfirmed({
         number: parseInt(digits),
         type: candidate ? "candidate" : "nulo",
-      });
-    }, 1200);
+      }, voterData);
+    }, 1500);
     setConfirmed(true);
-  }, [confirmed, digits, candidate, onVoteConfirmed]);
+  }, [confirmed, digits, candidate, onVoteConfirmed, voterData, step]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (step !== 'urna') return;
       if (e.key >= "0" && e.key <= "9") handleDigit(e.key);
       if (e.key === "Backspace" || e.key === "Delete") handleCorrect();
       if (e.key === "Enter") handleConfirm();
@@ -78,129 +94,182 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleDigit, handleCorrect, handleConfirm, handleBlank]);
+  }, [handleDigit, handleCorrect, handleConfirm, handleBlank, step]);
 
   return (
-    <div className="min-h-screen bg-[#cdc8bc] p-4 md:p-8 flex flex-col items-center justify-center gap-4">
-      <div className="text-center space-y-1">
-        <p className="text-sm text-zinc-700">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 transition-colors duration-300 p-4 md:p-8 flex flex-col items-center justify-center gap-4 relative">
+      
+      {/* Botão de Troca de Tema */}
+      <button 
+        onClick={() => setIsDarkMode(!isDarkMode)}
+        className="absolute top-4 right-4 p-3 rounded-full bg-white dark:bg-slate-800 shadow-md text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform"
+      >
+        {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
+
+      <div className="text-center space-y-1 mb-4">
+        <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
           {turma.name} — Eleitor {voterNumber} de {totalVoters}
         </p>
-        <button onClick={onBack} className="text-xs text-zinc-600 underline hover:text-zinc-900">
-          ← Voltar para seleção
+        <button onClick={onBack} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+          ← Cancelar e Voltar
         </button>
       </div>
 
-      <div className="w-full max-w-[1280px] grid grid-cols-1 lg:grid-cols-[1fr_430px] gap-8 items-stretch">
-        <div className="bg-[#f4f4f4] border border-black/10 min-h-[520px] rounded-sm p-6">
-          {showEndAnim ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center animate-pulse">
-                <p className="text-6xl font-extrabold">FIM</p>
-                <p className="text-lg">Voto computado</p>
-              </div>
+      {step === 'mesario' ? (
+        /* ================= TERMINAL DO MESÁRIO ================= */
+        <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border-t-4 border-blue-600">
+          <div className="flex items-center gap-3 mb-6 border-b dark:border-slate-700 pb-4">
+            <UserCheck className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+            <div>
+              <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase">Terminal do Mesário</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Identificação obrigatória do eleitor</p>
             </div>
-          ) : (
-            <div className="h-full flex flex-col justify-between">
-              <div>
-                <p className="text-xs tracking-[0.2em] text-zinc-600 uppercase">Líder de Turma</p>
-                <div className="mt-6 grid grid-cols-[120px_1fr] gap-6 items-start">
-                  <div className="space-y-2">
-                    <p className="text-sm text-zinc-600">Número</p>
-                    <div className="flex gap-2">
-                      {Array.from({ length: maxDigits }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="w-12 h-14 border-2 border-zinc-500 bg-white flex items-center justify-center text-3xl font-black"
-                        >
-                          {digits[i] || ""}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+          </div>
 
-                  {digits.length === maxDigits && candidate ? (
-                    <div className="flex gap-4 items-start">
-                      <div className="w-[130px] h-[160px] border border-black/20 bg-white overflow-hidden flex items-center justify-center">
-                        {candidate.photo ? (
-                          <img src={candidate.photo} alt={candidate.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-xs text-zinc-500 px-2 text-center">Sem imagem</span>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-sm text-zinc-500">Nome:</p>
-                        <p className="font-bold text-xl">{candidate.name}</p>
-                        <p className="text-sm text-zinc-500 mt-3">Turma:</p>
-                        <p className="text-lg">{candidate.turma}</p>
-                      </div>
-                    </div>
-                  ) : digits.length === maxDigits ? (
-                    <div>
-                      <p className="font-black text-4xl text-red-600">VOTO NULO</p>
-                      <p className="text-zinc-600">Número não corresponde a nenhum candidato.</p>
-                    </div>
-                  ) : null}
+          <form onSubmit={handleLiberarUrna} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Nome Completo</label>
+              <input 
+                type="text" required autoFocus
+                className="w-full p-3 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                value={voterData.name}
+                onChange={e => setVoterData({...voterData, name: e.target.value})}
+                placeholder="Ex: João da Silva"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Documento (RG ou CPF)</label>
+              <input 
+                type="text" required
+                className="w-full p-3 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                value={voterData.document}
+                onChange={e => setVoterData({...voterData, document: e.target.value})}
+                placeholder="Apenas números"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Celular / Contato</label>
+              <input 
+                type="text"
+                className="w-full p-3 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                value={voterData.contact}
+                onChange={e => setVoterData({...voterData, contact: e.target.value})}
+                placeholder="(75) 90000-0000"
+              />
+            </div>
+
+            <button type="submit" className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest py-4 rounded-lg flex justify-center items-center gap-2 transition-colors">
+              <ShieldCheck className="w-5 h-5" /> Liberar Urna
+            </button>
+          </form>
+        </div>
+      ) : (
+        /* ================= URNA ELETRÔNICA ================= */
+        <div className="w-full max-w-[1000px] grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-0 items-stretch shadow-2xl rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700">
+          
+          {/* TELA DA URNA */}
+          <div className="bg-[#f4f4f4] min-h-[500px] p-6 relative">
+            {showEndAnim ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+                <div className="text-center">
+                  <p className="text-7xl font-extrabold tracking-widest text-slate-800">FIM</p>
+                  <p className="text-lg text-slate-500 mt-2 font-bold">VOTOU</p>
                 </div>
               </div>
+            ) : (
+              <div className="h-full flex flex-col justify-between">
+                <div>
+                  <p className="text-sm font-black tracking-widest text-slate-800 uppercase">Candidato / Chapa</p>
+                  <div className="mt-8 grid grid-cols-[100px_1fr] gap-6 items-start">
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-600">Número</p>
+                      <div className="flex gap-2">
+                        {Array.from({ length: maxDigits }).map((_, i) => (
+                          <div key={i} className="w-12 h-16 border border-slate-800 bg-white flex items-center justify-center text-4xl font-black shadow-inner">
+                            {digits[i] || ""}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-              <div className="border-t border-black/20 pt-3 text-sm text-zinc-600">
-                Digite o número do candidato e pressione <strong>CONFIRMA</strong>.
+                    {digits.length === maxDigits && candidate ? (
+                      <div className="flex gap-4 items-start pl-4 border-l-2 border-slate-300">
+                        <div className="w-[120px] h-[160px] border-2 border-slate-800 bg-white overflow-hidden shadow-sm">
+                          {candidate.photo ? (
+                            <img src={candidate.photo} alt={candidate.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 font-bold bg-slate-100">Sem Foto</div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase">Nome</p>
+                          <p className="font-black text-2xl text-slate-800 leading-none mb-3">{candidate.name}</p>
+                          {candidate.vice_name && (
+                            <>
+                              <p className="text-xs font-bold text-slate-500 uppercase mt-2">Vice</p>
+                              <p className="font-bold text-lg text-slate-700">{candidate.vice_name}</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : digits.length === maxDigits ? (
+                      <div className="pl-4">
+                        <p className="font-black text-5xl text-slate-800 mt-4">VOTO NULO</p>
+                        <p className="text-slate-500 font-bold mt-2">Número não encontrado.</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="border-t-2 border-slate-800 pt-3 text-xs font-bold text-slate-800 flex flex-col gap-1">
+                  <p>Aperte a tecla:</p>
+                  <p className="text-green-700">VERDE para CONFIRMAR este voto</p>
+                  <p className="text-orange-600">LARANJA para REINICIAR este voto</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* TECLADO DA URNA */}
+          <div className="bg-[#2b2b2b] flex flex-col">
+            <div className="bg-slate-100 h-[80px] flex items-center px-4 justify-between border-b-4 border-[#1a1a1a]">
+              <div className="h-[50px] px-4 bg-[#202683] text-white flex items-center justify-center font-black text-xl tracking-widest shadow-inner">
+                CEEPS
+              </div>
+              <div className="text-right leading-none">
+                <p className="text-2xl font-black text-slate-800 tracking-tighter">JUSTIÇA</p>
+                <p className="text-xl font-black text-slate-800 tracking-tighter">ELEITORAL</p>
               </div>
             </div>
-          )}
-        </div>
 
-        <div className="bg-[#666062] border border-black/10 rounded-sm overflow-hidden">
-          <div className="bg-[#f5f5f3] h-[92px] grid grid-cols-[120px_1fr] items-center">
-            <div className="h-full bg-[#202683] text-white flex items-center justify-center text-xs font-bold text-center p-2">
-              CEEPS
-            </div>
-            <div className="text-center leading-tight">
-              <p className="text-5xl font-black tracking-wide">CEEPS</p>
-              <p className="text-3xl font-black tracking-wide">ELEITORAL</p>
-            </div>
-          </div>
+            <div className="p-8 flex-1 flex flex-col justify-center">
+              <div className="grid grid-cols-3 gap-3 max-w-[260px] mx-auto">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
+                  <button
+                    key={n} onClick={() => handleDigit(String(n))}
+                    className={`h-14 rounded-md bg-[#1a1a1a] shadow-[0_4px_0_#000] text-white text-2xl font-black hover:bg-[#333] active:translate-y-1 active:shadow-none transition-all ${n === 0 ? "col-start-2" : ""}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
 
-          <div className="p-7">
-            <div className="grid grid-cols-3 gap-4 max-w-[290px] mx-auto">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => handleDigit(String(n))}
-                  className={`h-20 rounded-[24px] bg-black text-white text-6xl font-black transition-all hover:opacity-90 active:scale-95 ${
-                    n === 0 ? "col-start-2" : ""
-                  }`}
-                >
-                  {n}
+              <div className="flex gap-2 mt-8 justify-center">
+                <button onClick={handleBlank} className="h-12 w-[80px] rounded bg-white shadow-[0_3px_0_#999] text-slate-800 font-black text-[10px] uppercase active:translate-y-1 active:shadow-none transition-all">
+                  Branco
                 </button>
-              ))}
-            </div>
-
-            <div className="flex gap-3 mt-8 justify-center">
-              <button
-                onClick={handleBlank}
-                className="h-16 px-6 rounded-[22px] bg-white text-black font-black text-3xl uppercase"
-              >
-                Branco
-              </button>
-              <button
-                onClick={handleCorrect}
-                className="h-16 px-6 rounded-[22px] bg-[#ee9133] text-black font-black text-3xl uppercase"
-              >
-                Corrige
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={digits.length < maxDigits}
-                className="h-16 px-6 rounded-[22px] bg-[#0dd16f] text-black font-black text-3xl uppercase disabled:opacity-40"
-              >
-                Confirma
-              </button>
+                <button onClick={handleCorrect} className="h-12 w-[80px] rounded bg-[#e86a10] shadow-[0_3px_0_#b34d00] text-slate-900 font-black text-[10px] uppercase active:translate-y-1 active:shadow-none transition-all">
+                  Corrige
+                </button>
+                <button onClick={handleConfirm} disabled={digits.length < maxDigits} className="h-14 w-[90px] rounded bg-[#108c4f] shadow-[0_3px_0_#0a5932] text-slate-900 font-black text-xs uppercase -mt-2 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:active:translate-y-0 disabled:shadow-[0_3px_0_#0a5932]">
+                  Confirma
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
