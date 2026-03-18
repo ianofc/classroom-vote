@@ -1,10 +1,15 @@
+
 export interface Candidate {
   number: number;
   name: string;
   turma: string;
   photo?: string;
+  vice_name?: string; // NOVO: Nome do Vice
+  document?: string;  // NOVO: RG/CPF do candidato
+  contact?: string;   // NOVO: Telefone/Email
 }
 
+// ... restante do arquivo (Turma, VoteResult, TURMAS)
 export interface Turma {
   id: string;
   name: string;
