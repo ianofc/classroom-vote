@@ -67,6 +67,11 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
     setTimeout(() => {
       setShowEndAnim(false);
       onVoteConfirmed({ number: -1, type: "branco" }, voterData);
+      
+      // Reinicia a urna para o próximo eleitor
+      setVoterData({ name: "", document: "", contact: "" });
+      setStep('mesario');
+      setConfirmed(false);
     }, 1500);
     setConfirmed(true);
   }, [confirmed, onVoteConfirmed, voterData, step]);
@@ -80,6 +85,12 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
         number: parseInt(digits),
         type: candidate ? "candidate" : "nulo",
       }, voterData);
+      
+      // Reinicia a urna para o próximo eleitor limpando os rastros
+      setVoterData({ name: "", document: "", contact: "" });
+      setDigits("");
+      setStep('mesario');
+      setConfirmed(false);
     }, 1500);
     setConfirmed(true);
   }, [confirmed, digits, candidate, onVoteConfirmed, voterData, step]);
@@ -118,8 +129,8 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
 
       {step === 'mesario' ? (
         /* ================= TERMINAL DO MESÁRIO ================= */
-        <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border-t-4 border-blue-600">
-          <div className="flex items-center gap-3 mb-6 border-b dark:border-slate-700 pb-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border-t-4 border-blue-600 transition-all">
+          <div className="flex items-center gap-3 mb-6 border-b border-slate-200 dark:border-slate-700 pb-4">
             <UserCheck className="w-8 h-8 text-blue-600 dark:text-blue-400" />
             <div>
               <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase">Terminal do Mesário</h2>
@@ -132,7 +143,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Nome Completo</label>
               <input 
                 type="text" required autoFocus
-                className="w-full p-3 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 font-medium"
                 value={voterData.name}
                 onChange={e => setVoterData({...voterData, name: e.target.value})}
                 placeholder="Ex: João da Silva"
@@ -142,7 +153,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Documento (RG ou CPF)</label>
               <input 
                 type="text" required
-                className="w-full p-3 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 font-medium tracking-wider"
                 value={voterData.document}
                 onChange={e => setVoterData({...voterData, document: e.target.value})}
                 placeholder="Apenas números"
@@ -152,14 +163,14 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: Urna
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Celular / Contato</label>
               <input 
                 type="text"
-                className="w-full p-3 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 font-medium"
                 value={voterData.contact}
                 onChange={e => setVoterData({...voterData, contact: e.target.value})}
                 placeholder="(75) 90000-0000"
               />
             </div>
 
-            <button type="submit" className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest py-4 rounded-lg flex justify-center items-center gap-2 transition-colors">
+            <button type="submit" className="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest py-4 rounded-lg flex justify-center items-center gap-2 transition-colors shadow-md">
               <ShieldCheck className="w-5 h-5" /> Liberar Urna
             </button>
           </form>
