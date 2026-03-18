@@ -35,19 +35,28 @@ export async function createVoteSession(turma: Turma, totalVoters: number): Prom
   return data.id as string;
 }
 
-export async function saveVoteToSession(sessionId: string | null, turmaId: string, vote: VoteRecord): Promise<void> {
-  if (!supabase || !sessionId) return;
+export async function saveVoteToSession(
+  sessionId: string | null, 
+  turmaId: string, 
+  vote: VoteRecord,
+  voterData: { name: string; document: string; contact: string } // Novos dados
+): Promise<void> {
+  if (!supabase) return;
 
   const { error } = await supabase.from("votes").insert({
     session_id: sessionId,
     turma_id: turmaId,
+    voter_name: voterData.name,
+    voter_document: voterData.document,
+    voter_contact: voterData.contact,
     candidate_number: vote.type === "candidate" ? vote.number : null,
     vote_type: vote.type,
-    voter_index: vote.voterIndex,
   });
 
   if (error) {
+    // Aqui o erro de "Unique Constraint" indicará se o aluno já votou
     console.error("Erro ao salvar voto:", error.message);
+    throw new Error(error.message);
   }
 }
 
