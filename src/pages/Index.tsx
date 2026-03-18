@@ -10,6 +10,12 @@ import { Users, ShieldCheck } from "lucide-react";
 
 type Phase = "select" | "setup" | "voting" | "results" | "admin";
 
+interface VoterData {
+  name: string;
+  document: string;
+  contact: string;
+}
+
 const Index = () => {
   const [phase, setPhase] = useState<Phase>("select");
   const [turma, setTurma] = useState<Turma | null>(null);
@@ -34,14 +40,20 @@ const Index = () => {
     setPhase("voting");
   };
 
+  // ATUALIZADO: Agora recebe vote e voterData
   const handleVote = useCallback(
-    (vote: { number: number; type: "candidate" | "branco" | "nulo" }) => {
+    (vote: { number: number; type: "candidate" | "branco" | "nulo" }, voterData: VoterData) => {
       const voteRecord = { ...vote, voterIndex: currentVoter };
+      
+      // Atualiza o estado local (para não quebrar lógicas locais antigas)
       setVotes((prev) => [...prev, voteRecord]);
+      
+      // Salva no banco de dados do Supabase passando os dados do eleitor (RG/CPF, Nome)
       if (turma) {
-        void saveVoteToSession(currentSessionId, turma.id, voteRecord);
+        void saveVoteToSession(currentSessionId, turma.id, voteRecord, voterData);
       }
 
+      // Avança a fila ou finaliza
       if (currentVoter >= totalVoters) {
         setTimeout(() => setPhase("results"), 400);
       } else {
@@ -151,7 +163,7 @@ const Index = () => {
       <div className="relative">
         <Urna
           turma={turma}
-          onVoteConfirmed={handleVote}
+          onVoteConfirmed={handleVote} // Passa a função que agora suporta voterData
           onBack={handleReset}
           voterNumber={currentVoter}
           totalVoters={totalVoters}
@@ -172,7 +184,6 @@ const Index = () => {
     return (
       <AdminPanel
         turma={turma}
-        votes={votes}
         totalVoters={totalVoters}
         currentVoter={currentVoter}
         votingComplete={votingComplete}
