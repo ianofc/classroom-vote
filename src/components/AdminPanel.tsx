@@ -32,7 +32,7 @@ interface AdminPanelProps {
   onTurmasChanged: () => void;
 }
 
-type Tab = "votes" | "turmas" | "admins" | "reports";
+type Tab = "votes" | "reports" | "turmas" | "admins";
 
 const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionId, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
@@ -101,8 +101,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
       const matchSearch = !s || v.voter_name.toLowerCase().includes(s) || v.voter_document.includes(s);
       const matchTurma = !filters.turmaId || v.turma_id === filters.turmaId;
       const matchType = !filters.voteType || v.vote_type === filters.voteType;
-      
-      // Filtro de data exata (formato YYYY-MM-DD do input date)
       const matchDate = !filters.date || (v.created_at && v.created_at.startsWith(filters.date));
 
       return matchSearch && matchTurma && matchType && matchDate;
@@ -158,7 +156,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
             <h1>CEEPS Seabra-Ba</h1>
             <div class="sub">Relatório Oficial de Apuração e Auditoria</div>
           </div>
-          
           <div class="filters">
             <strong>Filtros aplicados na pesquisa:</strong><br/>
             Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | 
@@ -166,22 +163,16 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
             Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/>
             Busca por nome/documento: ${filters.search || 'Nenhuma'}
           </div>
-          
           <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
-          
           <table>
             <thead><tr><th>Data/Hora</th><th>Turma</th><th>Eleitor / Documento</th><th>Voto Registrado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          
           <div class="rodape">
             Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema de Votação CEEPS.<br/>
             Para salvar em PDF, utilize a opção "Salvar como PDF" no destino de impressão.
           </div>
-          
-          <script>
-            window.onload = function() { window.print(); }
-          </script>
+          <script>window.onload = function() { window.print(); }</script>
         </body>
       </html>
     `;
@@ -231,16 +222,13 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
 
       <div className="w-full max-w-5xl">
         
-        {/* ================= ABA DE RELATÓRIOS ================= */}
+        {/* ABA DE RELATÓRIOS */}
         {activeTab === "reports" && (
           <div className="space-y-6">
-            
-            {/* Barra de Filtros */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3">
                 <FileText className="w-5 h-5 text-blue-600" /> Relatório Geral e Pesquisa
               </h2>
-              
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label>
@@ -253,65 +241,46 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                     />
                   </div>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Turma</label>
-                  <select 
-                    className="w-full p-2.5 border rounded-lg text-sm bg-white"
-                    value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}
-                  >
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}>
                     <option value="">Todas as Turmas</option>
                     {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Tipo de Voto</label>
-                  <select 
-                    className="w-full p-2.5 border rounded-lg text-sm bg-white"
-                    value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}
-                  >
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}>
                     <option value="">Todos</option>
                     <option value="candidate">Válidos (Candidatos)</option>
                     <option value="branco">Em Branco</option>
                     <option value="nulo">Nulos</option>
                   </select>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Data da Votação</label>
                   <div className="relative">
                     <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                    <input 
-                      type="date" 
-                      className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600"
-                      value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})}
-                    />
+                    <input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} />
                   </div>
                 </div>
               </div>
-
               <div className="flex justify-between items-center pt-4 border-t mt-4">
                 <p className="text-sm text-slate-500 font-medium">
                   Exibindo <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos correspondentes.
                 </p>
-                <button 
-                  onClick={printFilteredReport}
-                  disabled={isPrinting || filteredReport.length === 0}
-                  className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
+                <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50">
                   <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar em PDF / Imprimir"}
                 </button>
               </div>
             </div>
 
-            {/* Tabela de Resultados do Relatório */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
                  <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem de Votos</span>
                  <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1 shadow-sm">
                     {showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    {showVotes ? "OCULTAR VOTOS" : "MOSTRAR VOTOS"}
+                    {showVotes ? "OCULTAR" : "MOSTRAR"}
                   </button>
               </div>
               <div className="max-h-[500px] overflow-y-auto">
@@ -332,9 +301,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                     <tbody className="divide-y divide-slate-100">
                       {filteredReport.map((v, i) => (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-4 text-xs text-slate-500">
-                            {v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}
-                          </td>
+                          <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
                           <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
                           <td className="p-4">
                             <p className="font-bold text-slate-900">{v.voter_name}</p>
@@ -346,9 +313,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                                 {v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
                               </span>
                             ) : (
-                              <span className="text-slate-300 italic text-xs flex justify-end items-center gap-1">
-                                <Lock className="w-3 h-3" /> Sigilo Ativo
-                              </span>
+                              <span className="text-slate-300 italic text-xs flex justify-end items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
                             )}
                           </td>
                         </tr>
@@ -361,8 +326,8 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
           </div>
         )}
 
-        {/* ================= ABA DE VOTOS (SESSÃO ATUAL) ================= */}
-        {activeTab === "votes" && turma ? (
+        {/* ABA DE VOTOS (SESSÃO ATUAL) */}
+        {activeTab === "votes" && turma && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-6">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -380,19 +345,18 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                   <div className="flex items-center gap-2 text-green-700 font-bold mb-2">
                     <CheckSquare className="w-5 h-5" /> Urna Finalizada
                   </div>
-                  <p className="text-sm text-green-600">Para ver o panorama geral e aplicar filtros avançados, acesse a aba <strong>Relatórios</strong>.</p>
+                  <p className="text-sm text-green-600">Para ver o panorama geral e aplicar filtros, acesse a aba <strong>Relatórios</strong>.</p>
                 </div>
               )}
             </div>
-
             <div className="md:col-span-2">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-full">
                 <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
                   <h2 className="font-black text-slate-700 flex items-center gap-2 uppercase text-xs tracking-tighter">
-                    <FileText className="w-4 h-4" /> Auditoria da Sessão (Tempo Real)
+                    <FileText className="w-4 h-4" /> Auditoria da Sessão
                   </h2>
                   <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border border-slate-300 px-2 py-1.5 rounded hover:bg-slate-50">
-                    {showVotes ? "OCULTAR VOTOS" : "MOSTRAR VOTOS"}
+                    {showVotes ? "OCULTAR" : "MOSTRAR"}
                   </button>
                 </div>
                 <div className="max-h-[400px] overflow-y-auto p-2">
@@ -415,9 +379,32 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
               </div>
             </div>
           </div>
-        ) : activeTab === "votes" && !turma ? (
+        )}
+
+        {/* AVISO QUANDO NÃO HÁ URNA ATIVA */}
+        {activeTab === "votes" && !turma && (
           <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center text-slate-500">
             <AlertTriangle className="w-10 h-10 mx-auto mb-4 opacity-50" />
             <p>Nenhuma urna ativa no momento. Acesse <strong>Turmas</strong> para iniciar ou <strong>Relatórios</strong> para ver o histórico.</p>
           </div>
-        )
+        )}
+
+        {/* ABA DE TURMAS */}
+        {activeTab === "turmas" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <ManageTurmas onTurmasChanged={onTurmasChanged} />
+          </div>
+        )}
+
+        {/* ABA DE ADMINS */}
+        {activeTab === "admins" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <ManageAdmins />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AdminPanel;
