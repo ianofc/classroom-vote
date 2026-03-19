@@ -1,22 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Turma } from "@/data/turmas";
-import { getSessionVoteReport, VoteReport } from "@/data/votes";
-import { supabase } from "@/lib/supabase"; // CORREÇÃO: Importação correta do Supabase
+import { getSessionVoteReport } from "@/data/votes";
+import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, Hash, User, AlertTriangle, 
-  Lock, Eye, EyeOff, GraduationCap, Printer, FileText, Users 
+  Lock, Eye, EyeOff, GraduationCap, Printer, FileText, 
+  Filter, Search, Calendar, CheckSquare
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
 import { toast } from "@/hooks/use-toast";
 
 interface ExtendedVoteRecord {
+  id?: string;
+  turma_id?: string;
   voter_name: string;
   voter_document: string;
   voter_contact: string;
   candidate_number: number | null;
   vote_type: "candidate" | "branco" | "nulo";
-  voter_index?: number;
+  created_at?: string;
 }
 
 interface AdminPanelProps {
@@ -29,21 +32,35 @@ interface AdminPanelProps {
   onTurmasChanged: () => void;
 }
 
-type Tab = "votes" | "turmas" | "admins";
+type Tab = "votes" | "turmas" | "admins" | "reports";
 
 const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionId, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(turma ? "votes" : "turmas");
   const [isPrinting, setIsPrinting] = useState(false);
+  
+  // Estados para a Sessão Atual (Aba Votos)
   const [realTimeVotes, setRealTimeVotes] = useState<ExtendedVoteRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Garante que o painel de gestão não bugue caso o modo escuro esteja ativado na urna
+  // Estados para o Relatório Global (Aba Relatórios)
+  const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
+  const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    search: "",
+    turmaId: "",
+    voteType: "",
+    date: ""
+  });
+
+  // Garante o modo claro no admin
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
 
-  const fetchVotesFromDb = async () => {
+  // Busca votos da sessão ATUAL
+  const fetchSessionVotes = async () => {
     if (!sessionId) return;
     setLoading(true);
     const { data, error } = await supabase
@@ -52,77 +69,98 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true });
 
-    if (error) {
-      toast({ title: "Erro ao buscar dados", description: error.message, variant: "destructive" });
-    } else {
-      setRealTimeVotes(data as ExtendedVoteRecord[]);
-    }
+    if (error) toast({ title: "Erro ao buscar dados", description: error.message, variant: "destructive" });
+    else setRealTimeVotes(data as ExtendedVoteRecord[]);
     setLoading(false);
   };
 
+  // Busca TODOS os votos para o Relatório Global
+  const fetchAllReports = async () => {
+    setReportLoading(true);
+    const [votesRes, turmasRes] = await Promise.all([
+      supabase.from("votes").select("*").order("created_at", { ascending: false }),
+      supabase.from("turmas").select("id, name").order("name")
+    ]);
+
+    if (votesRes.error) toast({ title: "Erro", description: votesRes.error.message, variant: "destructive" });
+    else setAllVotes(votesRes.data as ExtendedVoteRecord[]);
+    
+    if (turmasRes.data) setAllTurmas(turmasRes.data);
+    setReportLoading(false);
+  };
+
   useEffect(() => {
-    if (activeTab === "votes" && sessionId) {
-      fetchVotesFromDb();
-    }
+    if (activeTab === "votes" && sessionId) fetchSessionVotes();
+    if (activeTab === "reports") fetchAllReports();
   }, [activeTab, sessionId]);
 
-  const printVotesReport = async () => {
-    if (!turma || !sessionId) return;
+  // Aplicação dos Filtros no Relatório
+  const filteredReport = useMemo(() => {
+    return allVotes.filter(v => {
+      const s = filters.search.toLowerCase();
+      const matchSearch = !s || v.voter_name.toLowerCase().includes(s) || v.voter_document.includes(s);
+      const matchTurma = !filters.turmaId || v.turma_id === filters.turmaId;
+      const matchType = !filters.voteType || v.vote_type === filters.voteType;
+      
+      // Filtro de data exata (formato YYYY-MM-DD do input date)
+      const matchDate = !filters.date || (v.created_at && v.created_at.startsWith(filters.date));
+
+      return matchSearch && matchTurma && matchType && matchDate;
+    });
+  }, [allVotes, filters]);
+
+  const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
+
+  const getCandidateDisplay = (vote: ExtendedVoteRecord) => {
+    if (vote.vote_type === "branco") return "BRANCO";
+    if (vote.vote_type === "nulo") return "NULO";
+    const cand = turma?.candidates?.find(c => c.number === vote.candidate_number);
+    return cand ? cand.name : `Candidato ${vote.candidate_number || '?'}`;
+  };
+
+  const printFilteredReport = () => {
     setIsPrinting(true);
+    const escapeHtml = (t: string) => t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m));
 
-    const reportData = await getSessionVoteReport(sessionId);
-    if (!reportData) {
-      toast({ title: "Erro", description: "Não foi possível gerar o relatório.", variant: "destructive" });
-      setIsPrinting(false);
-      return;
-    }
-
-    const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m));
-
-    const candidateRows = turma.candidates
-      .map((c) => {
-        const total = reportData.totalsByCandidate[c.number] ?? 0;
-        return `
-          <tr>
-            <td>${c.number}</td>
-            <td><strong>${escapeHtml(c.name)}</strong>${c.vice_name ? `<br/><small>Vice: ${escapeHtml(c.vice_name)}</small>` : ''}</td>
-            <td style="text-align: center;">${total}</td>
-          </tr>`;
-      }).join("");
+    const rows = filteredReport.map(v => `
+      <tr>
+        <td>${new Date(v.created_at!).toLocaleDateString('pt-BR')}</td>
+        <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
+        <td><strong>${escapeHtml(v.voter_name)}</strong><br/><small>${escapeHtml(v.voter_document)}</small></td>
+        <td style="text-align: center; font-weight: bold;">
+          ${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
+        </td>
+      </tr>
+    `).join("");
 
     const reportHtml = `
       <html>
         <head>
-          <title>Relatório Final - ${escapeHtml(turma.name)}</title>
+          <title>Relatório de Votação Filtrado</title>
           <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; }
-            .header { text-align: center; border-bottom: 2px solid #202683; padding-bottom: 20px; margin-bottom: 30px; }
-            h1 { color: #202683; margin: 0; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            th { background-color: #f8f9fa; color: #202683; }
-            .summary { background: #f0f0f0; padding: 15px; border-radius: 8px; margin-top: 20px; }
-            .footer { margin-top: 50px; font-size: 10px; text-align: center; color: #777; }
+            body { font-family: sans-serif; padding: 30px; color: #333; }
+            h1 { color: #202683; border-bottom: 2px solid #202683; padding-bottom: 10px; }
+            .filters { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+            th { background-color: #f0f0f0; }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>CEEPS - Relatório de Votação Eletrônica</h1>
-            <p><strong>Turma:</strong> ${escapeHtml(turma.name)} | <strong>ID Sessão:</strong> ${sessionId.slice(0, 8)}</p>
+          <h1>Relatório de Votos</h1>
+          <div class="filters">
+            <strong>Filtros aplicados:</strong><br/>
+            Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | 
+            Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | 
+            Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} | 
+            Busca: ${filters.search || 'Nenhuma'}
           </div>
+          <p><strong>Total de registros: ${filteredReport.length}</strong></p>
           <table>
-            <thead>
-              <tr><th>Nº</th><th>Candidato / Chapa</th><th>Total de Votos</th></tr>
-            </thead>
-            <tbody>${candidateRows}</tbody>
+            <thead><tr><th>Data</th><th>Turma</th><th>Eleitor / Documento</th><th>Voto Registrado</th></tr></thead>
+            <tbody>${rows}</tbody>
           </table>
-          <div class="summary">
-            <p><strong>Votos em Branco:</strong> ${reportData.blanks}</p>
-            <p><strong>Votos Nulos:</strong> ${reportData.nulls}</p>
-            <hr/>
-            <p><strong>Total Geral de Votos:</strong> ${reportData.totalVotes} de ${totalVoters} previstos</p>
-          </div>
-          <div class="footer">Documento gerado em ${new Date().toLocaleString("pt-BR")} - Sistema de Votação CEEPS</div>
+          <p style="text-align: center; font-size: 10px; color: #777; margin-top: 40px;">Gerado em ${new Date().toLocaleString('pt-BR')} - CEEPS</p>
         </body>
       </html>
     `;
@@ -131,26 +169,18 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     if (printWindow) {
       printWindow.document.write(reportHtml);
       printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-        setIsPrinting(false);
-      }, 500);
+      setTimeout(() => { printWindow.print(); setIsPrinting(false); }, 500);
+    } else {
+      setIsPrinting(false);
     }
-  };
-
-  const getCandidateDisplay = (vote: ExtendedVoteRecord) => {
-    if (vote.vote_type === "branco") return "BRANCO";
-    if (vote.vote_type === "nulo") return "NULO";
-    const cand = turma?.candidates.find(c => c.number === vote.candidate_number);
-    return cand ? cand.name : `Candidato ${vote.candidate_number}`;
   };
 
   const progress = totalVoters > 0 ? (realTimeVotes.length / totalVoters) * 100 : 0;
 
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-slate-50 text-slate-900">
-      {/* Cabeçalho */}
-      <div className="w-full max-w-4xl flex justify-between items-center mb-6">
+      {/* Cabeçalho Global */}
+      <div className="w-full max-w-5xl flex justify-between items-center mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Painel Inicial
         </button>
@@ -159,9 +189,9 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="w-full max-w-4xl grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
-        {(["votes", "turmas", "admins"] as Tab[]).map((tab) => (
+      {/* Tabs Menu */}
+      <div className="w-full max-w-5xl grid grid-cols-2 md:grid-cols-4 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
+        {(["votes", "reports", "turmas", "admins"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -170,21 +200,152 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
             }`}
           >
             {tab === "votes" && <Hash className="w-4 h-4" />}
+            {tab === "reports" && <Filter className="w-4 h-4" />}
             {tab === "turmas" && <GraduationCap className="w-4 h-4" />}
             {tab === "admins" && <ShieldCheck className="w-4 h-4" />}
-            {tab.toUpperCase()}
+            {tab === "reports" ? "RELATÓRIOS" : tab.toUpperCase()}
           </button>
         ))}
       </div>
 
-      <div className="w-full max-w-4xl">
-        {activeTab === "votes" && turma && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="w-full max-w-5xl">
+        
+        {/* ================= ABA DE RELATÓRIOS (NOVA) ================= */}
+        {activeTab === "reports" && (
+          <div className="space-y-6">
             
-            {/* Coluna de Status e Resumo */}
+            {/* Barra de Filtros */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3">
+                <FileText className="w-5 h-5 text-blue-600" /> Relatório Geral e Pesquisa
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input 
+                      type="text" placeholder="Nome ou Documento" 
+                      className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Turma</label>
+                  <select 
+                    className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                    value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}
+                  >
+                    <option value="">Todas as Turmas</option>
+                    {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Tipo de Voto</label>
+                  <select 
+                    className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                    value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}
+                  >
+                    <option value="">Todos</option>
+                    <option value="candidate">Válidos (Candidatos)</option>
+                    <option value="branco">Em Branco</option>
+                    <option value="nulo">Nulos</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Data da Votação</label>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input 
+                      type="date" 
+                      className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600"
+                      value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-4 border-t mt-4">
+                <p className="text-sm text-slate-500 font-medium">
+                  Exibindo <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos correspondentes.
+                </p>
+                <button 
+                  onClick={printFilteredReport}
+                  disabled={isPrinting || filteredReport.length === 0}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Imprimir Resultado"}
+                </button>
+              </div>
+            </div>
+
+            {/* Tabela de Resultados do Relatório */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
+                 <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem de Votos</span>
+                 <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1 shadow-sm">
+                    {showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    {showVotes ? "OCULTAR VOTOS" : "MOSTRAR VOTOS"}
+                  </button>
+              </div>
+              <div className="max-h-[500px] overflow-y-auto">
+                {reportLoading ? (
+                  <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Buscando banco de dados...</div>
+                ) : filteredReport.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">Nenhum voto encontrado para estes filtros.</div>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10">
+                      <tr className="text-[10px] text-slate-500 uppercase">
+                        <th className="p-4 font-black">Data/Hora</th>
+                        <th className="p-4 font-black">Turma</th>
+                        <th className="p-4 font-black">Eleitor & Documento</th>
+                        <th className="p-4 font-black text-right">Voto Computado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredReport.map((v, i) => (
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 text-xs text-slate-500">
+                            {v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}
+                          </td>
+                          <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
+                          <td className="p-4">
+                            <p className="font-bold text-slate-900">{v.voter_name}</p>
+                            <p className="font-mono text-xs text-slate-400">{v.voter_document}</p>
+                          </td>
+                          <td className="p-4 text-right">
+                            {showVotes ? (
+                              <span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                {v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 italic text-xs flex justify-end items-center gap-1">
+                                <Lock className="w-3 h-3" /> Sigilo Ativo
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= ABA DE VOTOS (SESSÃO ATUAL) ================= */}
+        {activeTab === "votes" && turma ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-6">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Progresso Real</h3>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Progresso da Urna</h3>
                 <div className="flex justify-between items-end mb-2">
                   <span className="text-3xl font-black text-blue-600">{realTimeVotes.length}</span>
                   <span className="text-sm font-bold text-slate-400">/ {totalVoters} Alunos</span>
@@ -192,82 +353,55 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }} />
                 </div>
-                <button 
-                  onClick={printVotesReport}
-                  disabled={isPrinting || realTimeVotes.length === 0}
-                  className="w-full mt-6 flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 transition-all"
-                >
-                  <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Imprimir Ata"}
-                </button>
               </div>
-
               {votingComplete && (
                 <div className="bg-green-50 border border-green-200 p-5 rounded-2xl">
-                  <div className="flex items-center gap-2 text-green-700 font-bold mb-3">
-                    <ShieldCheck className="w-5 h-5" /> Votação Finalizada
+                  <div className="flex items-center gap-2 text-green-700 font-bold mb-2">
+                    <CheckSquare className="w-5 h-5" /> Urna Finalizada
                   </div>
-                  <p className="text-sm text-green-600">Todos os votos foram criptografados e salvos no banco de dados.</p>
+                  <p className="text-sm text-green-600">Para ver o panorama geral e aplicar filtros avançados, acesse a aba <strong>Relatórios</strong>.</p>
                 </div>
               )}
             </div>
 
-            {/* Lista de Auditoria de Votos */}
-            <div className="md:col-span-2 space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <div className="md:col-span-2">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-full">
+                <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
                   <h2 className="font-black text-slate-700 flex items-center gap-2 uppercase text-xs tracking-tighter">
-                    <FileText className="w-4 h-4" /> Auditoria de Presença
+                    <FileText className="w-4 h-4" /> Auditoria da Sessão (Tempo Real)
                   </h2>
-                  <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border border-slate-300 text-slate-700 px-2 py-1 rounded hover:bg-slate-50 transition-colors">
-                    {showVotes ? <EyeOff className="w-3 h-3 inline mr-1" /> : <Eye className="w-3 h-3 inline mr-1" />}
+                  <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border border-slate-300 px-2 py-1.5 rounded hover:bg-slate-50">
                     {showVotes ? "OCULTAR VOTOS" : "MOSTRAR VOTOS"}
                   </button>
                 </div>
-
-                <div className="max-h-[500px] overflow-y-auto">
-                  {loading ? (
-                    <div className="p-10 text-center animate-pulse text-slate-400 font-bold">CARREGANDO DADOS...</div>
-                  ) : realTimeVotes.length === 0 ? (
-                    <div className="p-10 text-center text-slate-400">Aguardando primeiro eleitor...</div>
-                  ) : (
-                    <table className="w-full text-left text-sm border-separate border-spacing-0">
-                      <thead>
-                        <tr className="text-[10px] text-slate-400 uppercase">
-                          <th className="p-4 font-black">Eleitor</th>
-                          <th className="p-4 font-black">Documento</th>
-                          <th className="p-4 font-black text-right">Voto</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {realTimeVotes.map((v, i) => (
-                          <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-4">
-                              <p className="font-bold text-slate-800">{v.voter_name}</p>
-                              <p className="text-[10px] text-slate-400">{v.voter_contact}</p>
-                            </td>
-                            <td className="p-4 font-mono text-xs text-slate-500">{v.voter_document}</td>
-                            <td className="p-4 text-right">
-                              {showVotes ? (
-                                <span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>
-                                  {getCandidateDisplay(v)}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 italic text-xs flex justify-end items-center gap-1">
-                                  <Lock className="w-3 h-3" /> Sigiloso
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                <div className="max-h-[400px] overflow-y-auto p-2">
+                  {loading ? <div className="p-8 text-center text-slate-400 font-bold">CARREGANDO...</div> :
+                   realTimeVotes.length === 0 ? <div className="p-8 text-center text-slate-400">Aguardando votos...</div> :
+                   <table className="w-full text-left text-sm">
+                     <tbody>
+                       {realTimeVotes.map((v, i) => (
+                         <tr key={i} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                           <td className="p-3"><p className="font-bold">{v.voter_name}</p><p className="text-[10px] text-slate-400">{v.voter_document}</p></td>
+                           <td className="p-3 text-right">
+                             {showVotes ? <span className="font-bold text-blue-600">{getCandidateDisplay(v)}</span> : <Lock className="w-3 h-3 text-slate-300 inline" />}
+                           </td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                  }
                 </div>
               </div>
             </div>
           </div>
-        )}
+        ) : activeTab === "votes" && !turma ? (
+          <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center text-slate-500">
+            <AlertTriangle className="w-10 h-10 mx-auto mb-4 opacity-50" />
+            <p>Nenhuma urna ativa no momento. Acesse <strong>Turmas</strong> para iniciar ou <strong>Relatórios</strong> para ver o histórico.</p>
+          </div>
+        ) : null}
 
+        {/* ================= ABAS DE GESTÃO ================= */}
         {activeTab === "turmas" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <ManageTurmas onTurmasChanged={onTurmasChanged} />
