@@ -124,7 +124,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
 
     const rows = filteredReport.map(v => `
       <tr>
-        <td>${new Date(v.created_at!).toLocaleDateString('pt-BR')}</td>
+        <td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td>
         <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
         <td><strong>${escapeHtml(v.voter_name)}</strong><br/><small>${escapeHtml(v.voter_document)}</small></td>
         <td style="text-align: center; font-weight: bold;">
@@ -136,31 +136,52 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     const reportHtml = `
       <html>
         <head>
-          <title>Relatório de Votação Filtrado</title>
+          <title>Relatório de Votação - CEEPS</title>
           <style>
-            body { font-family: sans-serif; padding: 30px; color: #333; }
-            h1 { color: #202683; border-bottom: 2px solid #202683; padding-bottom: 10px; }
-            .filters { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
-            th { background-color: #f0f0f0; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; }
+            .sub { color: #666; font-size: 14px; margin-top: 5px; }
+            .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+            th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px; }
+            @media print {
+              @page { margin: 1cm; size: A4 portrait; }
+              button { display: none; }
+            }
           </style>
         </head>
         <body>
-          <h1>Relatório de Votos</h1>
+          <div class="cabecalho">
+            <h1>CEEPS Seabra-Ba</h1>
+            <div class="sub">Relatório Oficial de Apuração e Auditoria</div>
+          </div>
+          
           <div class="filters">
-            <strong>Filtros aplicados:</strong><br/>
+            <strong>Filtros aplicados na pesquisa:</strong><br/>
             Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | 
             Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | 
-            Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} | 
-            Busca: ${filters.search || 'Nenhuma'}
+            Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/>
+            Busca por nome/documento: ${filters.search || 'Nenhuma'}
           </div>
-          <p><strong>Total de registros: ${filteredReport.length}</strong></p>
+          
+          <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
+          
           <table>
-            <thead><tr><th>Data</th><th>Turma</th><th>Eleitor / Documento</th><th>Voto Registrado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Turma</th><th>Eleitor / Documento</th><th>Voto Registrado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          <p style="text-align: center; font-size: 10px; color: #777; margin-top: 40px;">Gerado em ${new Date().toLocaleString('pt-BR')} - CEEPS</p>
+          
+          <div class="rodape">
+            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema de Votação CEEPS.<br/>
+            Para salvar em PDF, utilize a opção "Salvar como PDF" no destino de impressão.
+          </div>
+          
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
         </body>
       </html>
     `;
@@ -169,7 +190,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     if (printWindow) {
       printWindow.document.write(reportHtml);
       printWindow.document.close();
-      setTimeout(() => { printWindow.print(); setIsPrinting(false); }, 500);
+      setTimeout(() => { setIsPrinting(false); }, 1000);
     } else {
       setIsPrinting(false);
     }
@@ -210,7 +231,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
 
       <div className="w-full max-w-5xl">
         
-        {/* ================= ABA DE RELATÓRIOS (NOVA) ================= */}
+        {/* ================= ABA DE RELATÓRIOS ================= */}
         {activeTab === "reports" && (
           <div className="space-y-6">
             
@@ -279,7 +300,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                   disabled={isPrinting || filteredReport.length === 0}
                   className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Imprimir Resultado"}
+                  <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar em PDF / Imprimir"}
                 </button>
               </div>
             </div>
@@ -399,23 +420,4 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
             <AlertTriangle className="w-10 h-10 mx-auto mb-4 opacity-50" />
             <p>Nenhuma urna ativa no momento. Acesse <strong>Turmas</strong> para iniciar ou <strong>Relatórios</strong> para ver o histórico.</p>
           </div>
-        ) : null}
-
-        {/* ================= ABAS DE GESTÃO ================= */}
-        {activeTab === "turmas" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <ManageTurmas onTurmasChanged={onTurmasChanged} />
-          </div>
-        )}
-
-        {activeTab === "admins" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <ManageAdmins />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default AdminPanel;
+        )
