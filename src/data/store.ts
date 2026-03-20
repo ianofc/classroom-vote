@@ -1,13 +1,7 @@
 import { Turma, TURMAS as DEFAULT_TURMAS } from "./turmas";
-
-export interface AdminUser {
-  id: string;
-  username: string;
-  password: string;
-}
+import { supabase } from "@/lib/supabase";
 
 const TURMAS_KEY = "urna_turmas";
-const ADMINS_KEY = "urna_admins";
 
 function readLocal<T>(key: string): T | null {
   const raw = localStorage.getItem(key);
@@ -63,53 +57,25 @@ export function deleteTurma(id: string) {
   return turmas;
 }
 
-// --- Admins ---
+// --- Admins (Autenticação via Supabase) ---
 
-export function getAdmins(): AdminUser[] {
-  const stored = readLocal<AdminUser[]>(ADMINS_KEY);
-  if (stored) return stored;
+export async function validateAdmin(username: string, password: string): Promise<boolean> {
+  if (!supabase) return false;
+  
+  const { data, error } = await supabase
+    .from('admins')
+    .select('id')
+    .eq('username', username)
+    .eq('password', password)
+    .single();
 
-  const initial = getDefaultAdmins();
-  writeLocal(ADMINS_KEY, initial);
-  return initial;
-}
-
-function getDefaultAdmins(): AdminUser[] {
-  return [{ id: "default", username: "admin", password: "admin123" }];
-}
-
-export function saveAdmins(admins: AdminUser[]) {
-  writeLocal(ADMINS_KEY, admins);
-}
-
-export function addAdmin(admin: AdminUser) {
-  const admins = getAdmins();
-  admins.push(admin);
-  saveAdmins(admins);
-  return admins;
-}
-
-export function updateAdmin(id: string, updated: Partial<AdminUser>) {
-  const admins = getAdmins();
-  const idx = admins.findIndex((a) => a.id === id);
-  if (idx !== -1) {
-    admins[idx] = { ...admins[idx], ...updated };
-    saveAdmins(admins);
+  if (error || !data) {
+    return false;
   }
-  return admins;
+  return true;
 }
 
-export function deleteAdmin(id: string) {
-  const admins = getAdmins().filter((a) => a.id !== id);
-  saveAdmins(admins);
-  return admins;
-}
-
-export function validateAdmin(username: string, password: string): boolean {
-  const admins = getAdmins();
-  return admins.some((a) => a.username === username && a.password === password);
-}
-
+// Utilitário global
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 10);
 }
