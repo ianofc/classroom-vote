@@ -1,13 +1,23 @@
 import { useState, useCallback, useEffect } from "react";
-import { UserCheck, ShieldCheck, Moon, Sun } from "lucide-react";
+import { UserCheck, ShieldCheck, Moon, Sun, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "@/hooks/use-toast";
 
 const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any) => {
-  // Etapas: 'identificacao' (dados do aluno) -> 'urna' (votação)
   const [step, setStep] = useState<'identificacao' | 'urna'>('identificacao');
   const [voterData, setVoterData] = useState({ name: "", document: "", contact: "" });
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Lógica de Votação em Sequência
+  // Lista de alunos da turma para validar a identidade (para evitar que o aluno digite errado e o sistema não ache)
+  const [turmaStudents, setTurmaStudents] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase.from('students').select('*').eq('turma_id', turma.id).then(({data}) => {
+      if (data) setTurmaStudents(data);
+    });
+  }, [turma.id]);
+
   const rolesAvailable = Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))) as string[];
   const sequence = rolesAvailable.length > 0 ? rolesAvailable : ['Geral'];
   const [currentRoleIndex, setCurrentRoleIndex] = useState(0);
@@ -26,6 +36,45 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
     if (isDarkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
+
+  // Função para remover acentos e facilitar a busca do aluno
+  const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+  // ----- VALIDAÇÃO E ATUALIZAÇÃO DO ALUNO -----
+  const handleLiberarUrna = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!voterData.name || !voterData.document || !voterData.contact) {
+      toast({ title: "Atenção", description: "Preencha todos os campos para votar.", variant: "destructive" });
+      return;
+    }
+
+    setIsAuthenticating(true);
+
+    // 1. Procura o aluno na lista importada pela escola (ignorando acentos e maiúsculas)
+    const studentEncontrado = turmaStudents.find(s => normalize(s.name) === normalize(voterData.name));
+
+    if (!studentEncontrado) {
+      setIsAuthenticating(false);
+      toast({ title: "Aluno Não Encontrado", description: "O nome digitado não consta na lista desta turma. Verifique a ortografia.", variant: "destructive" });
+      return;
+    }
+
+    // 2. Atualiza o cadastro do aluno no banco com o RG/CPF e Contato que ele acabou de digitar
+    const { error } = await supabase
+      .from('students')
+      .update({ document: voterData.document.trim(), contact: voterData.contact.trim() })
+      .eq('id', studentEncontrado.id);
+
+    setIsAuthenticating(false);
+
+    if (error) {
+      toast({ title: "Erro de Conexão", description: "Não foi possível validar seus dados. Tente novamente.", variant: "destructive" });
+      return;
+    }
+
+    // 3. Libera a Urna
+    setStep('urna');
+  };
 
   const handleDigit = useCallback((d: string) => {
     if (step !== 'urna' || showEndAnim) return;
@@ -97,20 +146,19 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
             </div>
           </div>
           
-          <form onSubmit={(e) => { e.preventDefault(); setStep('urna'); }} className="space-y-4">
+          <form onSubmit={handleLiberarUrna} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Nome Completo</label>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Seu Nome Completo</label>
               <input 
-                required 
-                autoFocus 
+                required autoFocus 
                 className="w-full p-3.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" 
                 value={voterData.name} 
                 onChange={e => setVoterData({...voterData, name: e.target.value})} 
-                placeholder="Ex: João da Silva"
+                placeholder="Conforme lista da escola"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Documento (RG ou CPF)</label>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Seu Documento (RG ou CPF)</label>
               <input 
                 required 
                 className="w-full p-3.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium tracking-wide" 
@@ -130,11 +178,12 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
               />
             </div>
             
-            <button type="submit" className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest py-4 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg hover:shadow-blue-500/30">
-              <ShieldCheck className="w-5 h-5" /> Acessar Urna
+            <button type="submit" disabled={isAuthenticating} className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest py-4 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg disabled:opacity-50">
+              {isAuthenticating ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />} 
+              {isAuthenticating ? "Validando..." : "Acessar Urna"}
             </button>
             <button type="button" onClick={onBack} className="w-full py-3 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest mt-2 transition-colors">
-              Cancelar e Voltar
+              Cancelar Eleição
             </button>
           </form>
         </div>
@@ -166,7 +215,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
 
                     {digits.length === maxDigits && candidate ? (
                       <div className="flex flex-col gap-3 pl-6 border-l-4 border-slate-300 animate-in fade-in slide-in-from-left-4 duration-300">
-                        {/* FOTOS LADO A LADO */}
                         <div className="flex items-end gap-4 mb-2">
                           <div className="w-[120px] h-[160px] border-2 border-slate-800 bg-white flex flex-col shadow-md rounded-sm overflow-hidden">
                             {candidate.photo_url ? <img src={candidate.photo_url} className="w-full flex-1 object-cover" alt="Titular" /> : <div className="flex-1 flex items-center justify-center text-xs text-slate-400 font-bold bg-slate-100">Sem Foto</div>}
@@ -217,4 +265,15 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
               </div>
               <div className="flex gap-3 mt-10 justify-center items-end">
                 <button onClick={handleBlank} className="h-14 w-[85px] rounded-sm bg-white border-t border-white/50 shadow-[0_4px_0_#999] text-slate-800 font-black text-[11px] uppercase tracking-wider active:translate-y-1 active:shadow-none transition-all">Branco</button>
-                <button onClick={handleCorrect} className="h-14 w-[85px] rounded-sm bg-[#e86a10] border-t border-white/20 shadow-[0_4px_0_#b34d00] text-slate-900 font-black text-[11px] uppercase tracking-wider active:translate-y-1 active:shadow-none transition
+                <button onClick={handleCorrect} className="h-14 w-[85px] rounded-sm bg-[#e86a10] border-t border-white/20 shadow-[0_4px_0_#b34d00] text-slate-900 font-black text-[11px] uppercase tracking-wider active:translate-y-1 active:shadow-none transition-all">Corrige</button>
+                <button onClick={handleConfirm} disabled={digits.length < maxDigits} className="h-16 w-[100px] rounded-sm bg-[#108c4f] border-t border-white/20 shadow-[0_4px_0_#0a5932] text-white font-black text-sm uppercase tracking-wider active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:active:translate-y-0 disabled:shadow-[0_4px_0_#0a5932]">Confirma</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Urna;
