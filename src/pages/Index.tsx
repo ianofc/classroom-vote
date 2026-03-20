@@ -83,12 +83,16 @@ const Index = () => {
     setCurrentSessionId(null);
   };
 
-  const handleOpenAdmin = () => {
+  const handleOpenAdmin = async () => {
     const username = prompt("Usuário administrador:");
     if (!username) return;
     const password = prompt("Senha:");
     if (!password) return;
-    if (validateAdmin(username, password)) {
+    
+    // Agora o sistema aguarda a resposta do Supabase (await)
+    const isValid = await validateAdmin(username, password);
+    
+    if (isValid) {
       setPhase("admin");
     } else {
       alert("Credenciais incorretas!");
