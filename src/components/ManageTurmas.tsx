@@ -57,12 +57,20 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   };
 
   const handleDeleteTurma = async (id: string) => {
-    if (!confirm("Isso apagará a turma e TODOS os alunos nela. Continuar?")) return;
+    if (!confirm("Atenção! Isso apagará a turma, TODOS os alunos e TODOS OS VOTOS vinculados a ela. Continuar?")) return;
+    
+    // Força a exclusão em cascata limpando os votos e alunos primeiro
+    await supabase.from('votes').delete().eq('turma_id', id);
+    await supabase.from('students').delete().eq('turma_id', id);
     const { error } = await supabase.from('turmas').delete().eq('id', id);
+    
     if (!error) {
       setTurmas(turmas.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
       onTurmasChanged();
+      toast({ title: "Sucesso", description: "Turma e todos os dados excluídos." });
+    } else {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
     }
   };
 
@@ -133,7 +141,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         const text = event.target?.result as string;
         const rows = text.split('\n').map(row => row.split(','));
         
-        // Pula o cabeçalho e exige apenas o NOME (row[0])
         const newStudents = rows.slice(1).map(row => ({
           turma_id: selectedTurma.id,
           name: row[0]?.trim(),
