@@ -1,58 +1,61 @@
-import { useState } from "react";
-import { getTurmas } from "@/data/store";
-import { Turma } from "@/data/turmas";
-import { Vote } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { ShieldCheck, Loader2, Users } from "lucide-react";
 
-interface TurmaSelectionProps {
-  onSelect: (turma: Turma) => void;
-  onAdmin: () => void;
-}
+export default function TurmaSelection({ onSelect, onAdmin }: any) {
+  const [turmas, setTurmas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-const TurmaSelection = ({ onSelect, onAdmin }: TurmaSelectionProps) => {
-  const turmas = getTurmas();
+  useEffect(() => {
+    async function load() {
+      const { data: tData } = await supabase.from("turmas").select("*").order("name");
+      const { data: cData } = await supabase.from("students").select("*").eq("is_candidate", true);
+      
+      if (tData && cData) {
+        const formatted = tData.map(t => ({
+          id: t.id,
+          name: t.name,
+          candidates: cData.filter(c => c.turma_id === t.id).map(c => ({
+            number: c.candidate_number,
+            name: c.name,
+            photo: c.photo_url,
+            vice_name: c.vice_name,
+            vice_photo: c.vice_photo_url,
+            category: c.category || 'Líder Geral'
+          }))
+        }));
+        setTurmas(formatted);
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /></div>;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 gap-8">
-      <div className="text-center space-y-3">
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <Vote className="w-10 h-10 text-primary" />
-          <h1 className="text-4xl font-extrabold tracking-tight">Urna Eletrônica</h1>
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-50">
+      <div className="w-full max-w-2xl text-center space-y-4 mb-10">
+        <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
+          <Users className="w-10 h-10 text-white" />
         </div>
-        <p className="text-muted-foreground text-lg">
-          Eleição de Líder de Turma — Selecione a turma
-        </p>
+        <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Eleições CEEPS</h1>
+        <p className="text-slate-500 font-medium">Selecione a turma para iniciar a sessão de votação</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
-        {turmas.map((turma) => (
-          <button
-            key={turma.id}
-            onClick={() => onSelect(turma)}
-            className="group relative overflow-hidden rounded-xl bg-card border border-border p-6 text-left transition-all hover:border-primary hover:shadow-lg hover:shadow-primary/10"
-          >
-            <div className="relative z-10">
-              <p className="text-xs font-semibold tracking-widest uppercase text-primary mb-1">Turma</p>
-              <p className="text-2xl font-bold">{turma.name}</p>
-              <p className="text-sm text-muted-foreground mt-1">{turma.candidates.length} candidatos</p>
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="w-full max-w-3xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        {turmas.map((t) => (
+          <button key={t.id} onClick={() => onSelect(t)} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-500 transition-all group text-left">
+            <h2 className="text-xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{t.name}</h2>
+            <p className="text-xs text-slate-400 mt-2">{t.candidates.length} candidatos registrados</p>
           </button>
         ))}
+        {turmas.length === 0 && <p className="col-span-full text-center text-slate-400">Nenhuma turma cadastrada no sistema.</p>}
       </div>
 
-      {turmas.length === 0 && (
-        <p className="text-muted-foreground text-sm">Nenhuma turma cadastrada. Acesse o painel de gestão para adicionar.</p>
-      )}
-
-      {/* Admin link */}
-      <button
-        onClick={onAdmin}
-        className="text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors mt-4"
-      >
-        ⚙ Painel de Gestão
+      <button onClick={onAdmin} className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:scale-110 transition-all">
+        <ShieldCheck className="w-5 h-5" />
       </button>
     </div>
   );
-};
-
-export default TurmaSelection;
+}
