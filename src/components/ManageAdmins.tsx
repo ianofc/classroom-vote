@@ -1,29 +1,47 @@
-import { useState } from "react";
-import { AdminUser } from "@/data/store";
-import { getAdmins, saveAdmins, generateId } from "@/data/store";
-import { Plus, Pencil, Trash2, X, Check, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Plus, Pencil, Trash2, X, Check, ShieldCheck, Eye, EyeOff, Loader2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+
+interface AdminUser {
+  id: string;
+  username: string;
+  password?: string;
+}
 
 const ManageAdmins = () => {
-  const [admins, setAdmins] = useState<AdminUser[]>(getAdmins());
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [formUser, setFormUser] = useState("");
   const [formPass, setFormPass] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const refresh = () => setAdmins(getAdmins());
+  useEffect(() => {
+    fetchAdmins();
+  }, []);
+
+  const fetchAdmins = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('admins').select('id, username').order('username');
+    if (!error && data) setAdmins(data);
+    setLoading(false);
+  };
 
   const startNew = () => {
     setIsNew(true);
     setFormUser("");
     setFormPass("");
-    setEditing({ id: generateId(), username: "", password: "" });
+    setEditing({ id: "new", username: "" });
   };
 
   const startEdit = (admin: AdminUser) => {
     setIsNew(false);
     setFormUser(admin.username);
-    setFormPass(admin.password);
+    setFormPass(""); // Senha em branco significa que não vai alterar
     setEditing(admin);
   };
 
@@ -33,31 +51,43 @@ const ManageAdmins = () => {
     setShowPass(false);
   };
 
-  const saveAdmin = () => {
-    if (!editing || !formUser.trim() || !formPass.trim()) return;
-
-    const all = getAdmins();
-    if (isNew) {
-      all.push({ id: editing.id, username: formUser.trim(), password: formPass.trim() });
-    } else {
-      const idx = all.findIndex((a) => a.id === editing.id);
-      if (idx !== -1) all[idx] = { ...all[idx], username: formUser.trim(), password: formPass.trim() };
+  const saveAdmin = async () => {
+    if (!editing || !formUser.trim()) return;
+    if (isNew && !formPass.trim()) {
+      toast({ title: "Erro", description: "A senha é obrigatória para novos admins.", variant: "destructive" });
+      return;
     }
 
-    saveAdmins(all);
+    setIsSaving(true);
+
+    if (isNew) {
+      const { error } = await supabase.from('admins').insert({ username: formUser.trim(), password: formPass.trim() });
+      if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+      else toast({ title: "Sucesso", description: "Admin criado!" });
+    } else {
+      const updateData: any = { username: formUser.trim() };
+      if (formPass.trim()) updateData.password = formPass.trim(); // Atualiza senha só se digitou algo
+      
+      const { error } = await supabase.from('admins').update(updateData).eq('id', editing.id);
+      if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+      else toast({ title: "Sucesso", description: "Admin atualizado!" });
+    }
+
+    setIsSaving(false);
     cancelEdit();
-    refresh();
+    fetchAdmins();
   };
 
-  const handleDelete = (id: string) => {
-    const all = getAdmins();
-    if (all.length <= 1) {
-      alert("É necessário manter pelo menos um administrador!");
+  const handleDelete = async (id: string) => {
+    if (admins.length <= 1) {
+      toast({ title: "Atenção", description: "Você não pode excluir o último administrador!", variant: "destructive" });
       return;
     }
     if (!confirm("Deseja realmente excluir este administrador?")) return;
-    saveAdmins(all.filter((a) => a.id !== id));
-    refresh();
+    
+    const { error } = await supabase.from('admins').delete().eq('id', id);
+    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    else fetchAdmins();
   };
 
   if (editing) {
@@ -69,26 +99,32 @@ const ManageAdmins = () => {
         </h3>
 
         <div>
-          <label className="text-xs text-muted-foreground block mb-1">Usuário</label>
+          <label htmlFor="adminUsername" className="text-xs text-muted-foreground block mb-1">Usuário</label>
           <input
+            id="adminUsername"
+            name="adminUsername"
             value={formUser}
             onChange={(e) => setFormUser(e.target.value)}
             placeholder="Nome de usuário"
             maxLength={30}
-            className="w-full h-10 rounded-lg bg-muted border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full h-10 rounded-lg bg-muted border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="text-xs text-muted-foreground block mb-1">Senha</label>
+          <label htmlFor="adminPassword" className="text-xs text-muted-foreground block mb-1">
+            {isNew ? "Senha" : "Nova Senha (deixe em branco para não alterar)"}
+          </label>
           <div className="relative">
             <input
+              id="adminPassword"
+              name="adminPassword"
               type={showPass ? "text" : "password"}
               value={formPass}
               onChange={(e) => setFormPass(e.target.value)}
               placeholder="Senha de acesso"
               maxLength={50}
-              className="w-full h-10 rounded-lg bg-muted border border-border px-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full h-10 rounded-lg bg-muted border border-border px-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               type="button"
@@ -101,18 +137,15 @@ const ManageAdmins = () => {
         </div>
 
         <div className="flex gap-2">
-          <button
-            onClick={cancelEdit}
-            className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-          >
+          <button onClick={cancelEdit} className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors">
             Cancelar
           </button>
           <button
             onClick={saveAdmin}
-            disabled={!formUser.trim() || !formPass.trim()}
-            className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm hover:brightness-110 transition-all disabled:opacity-40"
+            disabled={isSaving || !formUser.trim() || (isNew && !formPass.trim())}
+            className="flex-1 py-2.5 rounded-lg bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-all disabled:opacity-50 flex justify-center items-center gap-2"
           >
-            <Check className="w-4 h-4 inline mr-1" /> Salvar
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
           </button>
         </div>
       </div>
@@ -124,43 +157,36 @@ const ManageAdmins = () => {
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-sm flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-          Administradores
+          Administradores Globais
         </h3>
-        <button
-          onClick={startNew}
-          className="text-xs flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-semibold hover:brightness-110 transition-all"
-        >
+        <button onClick={startNew} className="text-xs flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all">
           <Plus className="w-3 h-3" /> Novo Admin
         </button>
       </div>
 
-      {admins.length === 0 ? (
+      {loading ? (
+        <p className="text-sm text-muted-foreground text-center py-6 animate-pulse">Carregando...</p>
+      ) : admins.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-6">Nenhum administrador cadastrado.</p>
       ) : (
         <div className="space-y-2">
           {admins.map((admin) => (
             <div key={admin.id} className="bg-muted/50 border border-border rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                  <ShieldCheck className="w-4 h-4 text-primary" />
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm">{admin.username}</p>
-                  <p className="text-xs text-muted-foreground">••••••••</p>
+                  <p className="font-bold text-sm text-slate-800">{admin.username}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Acesso Global</p>
                 </div>
               </div>
               <div className="flex gap-1">
-                <button
-                  onClick={() => startEdit(admin)}
-                  className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                <button onClick={() => startEdit(admin)} className="w-8 h-8 rounded-lg hover:bg-blue-50 flex items-center justify-center transition-colors">
+                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
                 </button>
-                <button
-                  onClick={() => handleDelete(admin.id)}
-                  className="w-8 h-8 rounded-lg hover:bg-destructive/10 flex items-center justify-center transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                <button onClick={() => handleDelete(admin.id)} className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors">
+                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
                 </button>
               </div>
             </div>
