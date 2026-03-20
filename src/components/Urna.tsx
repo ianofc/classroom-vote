@@ -38,7 +38,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
 
   const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-  // ----- NOVA LÓGICA DE AUTO-CREDENCIAMENTO -----
+  // ----- VALIDAÇÃO E AUTO-CADASTRO DO ALUNO -----
   const handleLiberarUrna = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voterData.name || !voterData.document || !voterData.contact) {
@@ -48,51 +48,54 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
 
     setIsAuthenticating(true);
 
-    const docStr = voterData.document.trim();
-    const nameStr = voterData.name.trim();
-    const contactStr = voterData.contact.trim();
+    const nameTrimmed = voterData.name.trim();
+    const docTrimmed = voterData.document.trim();
+    const contactTrimmed = voterData.contact.trim();
 
-    // Procura o aluno pelo nome (ignorando acentos) ou pelo documento
+    // 1. Procura se o aluno já existe na turma (pelo nome ou documento)
     const studentEncontrado = turmaStudents.find(s => 
-      normalize(s.name) === normalize(nameStr) || 
-      (s.document && s.document === docStr)
+      normalize(s.name) === normalize(nameTrimmed) || 
+      (s.document && s.document === docTrimmed)
     );
 
     if (studentEncontrado) {
-      // Aluno já existe na lista (Candidato ou pré-cadastrado), apenas atualiza o RG e Contato
+      // Se já existe (ex: é um candidato pré-cadastrado), atualiza o RG e Contato
       const { error } = await supabase
         .from('students')
-        .update({ document: docStr, contact: contactStr })
+        .update({ document: docTrimmed, contact: contactTrimmed })
         .eq('id', studentEncontrado.id);
 
       if (error) {
         setIsAuthenticating(false);
-        toast({ title: "Erro", description: "Este documento já pode ter sido usado.", variant: "destructive" });
+        toast({ title: "Erro", description: "Falha ao atualizar dados.", variant: "destructive" });
         return;
       }
     } else {
-      // Aluno NÃO estava na lista: Auto-credenciamento na hora!
-      const { data, error } = await supabase
+      // Se NÃO existe, auto-cadastra o aluno nesta turma e deixa ele votar
+      const { error } = await supabase
         .from('students')
         .insert({
           turma_id: turma.id,
-          name: nameStr,
-          document: docStr,
-          contact: contactStr,
-          is_candidate: false // Garante que ele é só um eleitor
-        }).select().single();
+          name: nameTrimmed,
+          document: docTrimmed,
+          contact: contactTrimmed,
+          is_candidate: false // É apenas eleitor
+        });
 
       if (error) {
         setIsAuthenticating(false);
-        toast({ title: "Erro de Cadastro", description: "Verifique se este documento já não foi utilizado.", variant: "destructive" });
+        // Se der erro de unicidade (código 23505), significa que o RG já votou/foi cadastrado em outra turma
+        if (error.code === '23505' || error.message.includes('unique')) {
+          toast({ title: "Documento Inválido", description: "Este documento já está registrado em outra turma.", variant: "destructive" });
+        } else {
+          toast({ title: "Erro de Cadastro", description: "Não foi possível registrar o aluno.", variant: "destructive" });
+        }
         return;
-      } else {
-        // Adiciona à memória local para ele não ser duplicado caso volte a tela
-        setTurmaStudents([...turmaStudents, data]);
       }
     }
 
     setIsAuthenticating(false);
+    // 3. Libera a Urna
     setStep('urna');
   };
 
@@ -161,7 +164,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
               <UserCheck className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Identificação</h2>
+              <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Identificação do Aluno</h2>
               <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1">Turma: {turma.name}</p>
             </div>
           </div>
@@ -174,7 +177,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
                 className="w-full p-3.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" 
                 value={voterData.name} 
                 onChange={e => setVoterData({...voterData, name: e.target.value})} 
-                placeholder="Digite seu nome completo"
+                placeholder="Conforme lista da escola"
               />
             </div>
             <div>
