@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, Hash, User, AlertTriangle, 
   Lock, Eye, EyeOff, GraduationCap, Printer, FileText, 
-  Filter, Search, Calendar, CheckSquare
+  Filter, Search, Calendar, CheckSquare, Trash2
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -39,11 +39,9 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
   const [activeTab, setActiveTab] = useState<Tab>(turma ? "votes" : "turmas");
   const [isPrinting, setIsPrinting] = useState(false);
   
-  // Estados para a Sessão Atual (Aba Votos)
   const [realTimeVotes, setRealTimeVotes] = useState<ExtendedVoteRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Estados para o Relatório Global (Aba Relatórios)
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
   const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -54,18 +52,16 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     date: ""
   });
 
-  // Garante o modo claro no admin
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
 
-  // Busca votos da sessão ATUAL
   const fetchSessionVotes = async () => {
     if (!sessionId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("votes")
-      .select("voter_name, voter_document, voter_contact, candidate_number, vote_type")
+      .select("id, voter_name, voter_document, voter_contact, candidate_number, vote_type, created_at")
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true });
 
@@ -74,7 +70,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     setLoading(false);
   };
 
-  // Busca TODOS os votos para o Relatório Global
   const fetchAllReports = async () => {
     setReportLoading(true);
     const [votesRes, turmasRes] = await Promise.all([
@@ -89,16 +84,30 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     setReportLoading(false);
   };
 
+  // Nova função para deletar VOTO DE TESTE
+  const handleDeleteVote = async (id: string) => {
+    if (!confirm("Atenção! Você está prestes a excluir este voto permanentemente do sistema. Continuar?")) return;
+    
+    const { error } = await supabase.from('votes').delete().eq('id', id);
+    
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Sucesso", description: "Voto excluído com sucesso." });
+      setAllVotes(allVotes.filter(v => v.id !== id));
+      setRealTimeVotes(realTimeVotes.filter(v => v.id !== id));
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "votes" && sessionId) fetchSessionVotes();
     if (activeTab === "reports") fetchAllReports();
   }, [activeTab, sessionId]);
 
-  // Aplicação dos Filtros no Relatório
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
       const s = filters.search.toLowerCase();
-      const matchSearch = !s || v.voter_name.toLowerCase().includes(s) || v.voter_document.includes(s);
+      const matchSearch = !s || v.voter_name.toLowerCase().includes(s) || (v.voter_document && v.voter_document.includes(s));
       const matchTurma = !filters.turmaId || v.turma_id === filters.turmaId;
       const matchType = !filters.voteType || v.vote_type === filters.voteType;
       const matchDate = !filters.date || (v.created_at && v.created_at.startsWith(filters.date));
@@ -118,13 +127,13 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
 
   const printFilteredReport = () => {
     setIsPrinting(true);
-    const escapeHtml = (t: string) => t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m));
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
 
     const rows = filteredReport.map(v => `
       <tr>
         <td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td>
         <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
-        <td><strong>${escapeHtml(v.voter_name)}</strong><br/><small>${escapeHtml(v.voter_document)}</small></td>
+        <td><strong>${escapeHtml(v.voter_name)}</strong><br/><small>${escapeHtml(v.voter_document || "Sem doc")}</small></td>
         <td style="text-align: center; font-weight: bold;">
           ${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
         </td>
@@ -295,7 +304,8 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                         <th className="p-4 font-black">Data/Hora</th>
                         <th className="p-4 font-black">Turma</th>
                         <th className="p-4 font-black">Eleitor & Documento</th>
-                        <th className="p-4 font-black text-right">Voto Computado</th>
+                        <th className="p-4 font-black text-center">Voto Computado</th>
+                        <th className="p-4 font-black text-center">Ação</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -305,16 +315,21 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                           <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
                           <td className="p-4">
                             <p className="font-bold text-slate-900">{v.voter_name}</p>
-                            <p className="font-mono text-xs text-slate-400">{v.voter_document}</p>
+                            <p className="font-mono text-xs text-slate-400">{v.voter_document || "Pendente"}</p>
                           </td>
-                          <td className="p-4 text-right">
+                          <td className="p-4 text-center">
                             {showVotes ? (
                               <span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>
                                 {v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
                               </span>
                             ) : (
-                              <span className="text-slate-300 italic text-xs flex justify-end items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
+                              <span className="text-slate-300 italic text-xs flex justify-center items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
                             )}
+                          </td>
+                          <td className="p-4 text-center">
+                            <button onClick={() => handleDeleteVote(v.id!)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir este voto">
+                              <Trash2 className="w-4 h-4 mx-auto" />
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -366,7 +381,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                      <tbody>
                        {realTimeVotes.map((v, i) => (
                          <tr key={i} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
-                           <td className="p-3"><p className="font-bold">{v.voter_name}</p><p className="text-[10px] text-slate-400">{v.voter_document}</p></td>
+                           <td className="p-3"><p className="font-bold">{v.voter_name}</p><p className="text-[10px] text-slate-400">{v.voter_document || "Sem doc"}</p></td>
                            <td className="p-3 text-right">
                              {showVotes ? <span className="font-bold text-blue-600">{getCandidateDisplay(v)}</span> : <Lock className="w-3 h-3 text-slate-300 inline" />}
                            </td>
