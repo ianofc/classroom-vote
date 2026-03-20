@@ -1,26 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import TurmaSelection from "@/components/TurmaSelection";
 import Urna from "@/components/Urna";
 import AdminPanel from "@/components/AdminPanel";
 import { validateAdmin } from "@/data/store";
 import { supabase } from "@/lib/supabase";
-import { Users, ShieldCheck, Loader2 } from "lucide-react";
+import { ShieldCheck, Loader2, Moon, Sun } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
-type Phase = "select" | "setup" | "voting" | "admin";
+type Phase = "welcome" | "select" | "setup" | "voting" | "admin";
 
 const Index = () => {
-  const [phase, setPhase] = useState<Phase>("select");
+  const [phase, setPhase] = useState<Phase>("welcome");
   const [turma, setTurma] = useState<any | null>(null);
   const [totalVoters, setTotalVoters] = useState(10);
   const [currentVoter, setCurrentVoter] = useState(1);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Controle de Tema Global
+  useEffect(() => {
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [isDarkMode]);
+
+  // Transição da Tela de Boas-Vindas para a Seleção de Turmas
+  useEffect(() => {
+    if (phase === "welcome") {
+      const timer = setTimeout(() => setPhase("select"), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [phase]);
 
   const handleSelectTurma = async (t: any) => {
     setLoadingCandidates(true);
     setPhase("setup");
-    // Busca apenas os candidatos desta turma
     const { data } = await supabase.from('students').select('*').eq('turma_id', t.id).eq('is_candidate', true);
     setTurma({ ...t, candidates: data || [] });
     setLoadingCandidates(false);
@@ -28,12 +42,11 @@ const Index = () => {
 
   const handleStartVoting = () => {
     setCurrentVoter(1);
-    setCurrentSessionId(crypto.randomUUID()); // Gera ID da sessão de urna
+    setCurrentSessionId(crypto.randomUUID());
     setPhase("voting");
   };
 
   const handleVote = async (votesArray: any[], voterData: any) => {
-    // Salva a sequência de votos de uma vez só no banco
     const rowsToInsert = votesArray.map(vote => ({
       session_id: currentSessionId,
       turma_id: turma.id,
@@ -66,43 +79,78 @@ const Index = () => {
     else alert("Credenciais incorretas!");
   };
 
-  if (phase === "select") return <TurmaSelection onSelect={handleSelectTurma} onAdmin={handleOpenAdmin} />;
+  return (
+    <div className="bg-aurora flex flex-col items-center justify-center min-h-screen relative">
+      
+      {/* Botão Global de Tema Claro/Escuro */}
+      <button 
+        onClick={() => setIsDarkMode(!isDarkMode)} 
+        className="fixed top-6 right-6 p-3 rounded-full glass-panel text-slate-700 dark:text-slate-200 hover:scale-105 transition-transform z-50 flex items-center justify-center"
+      >
+        {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
 
-  if (phase === "setup" && turma) {
-    if (loadingCandidates) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-blue-600" /></div>;
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6 gap-8 bg-slate-50">
-        <div className="bg-white border border-slate-200 rounded-xl p-8 w-full max-w-sm space-y-6 shadow-xl text-center">
-          <h1 className="text-2xl font-black uppercase text-blue-600 border-b pb-4">{turma.name}</h1>
-          <div className="text-left space-y-2">
-            <p className="text-sm font-bold text-slate-500 uppercase">Cargos em Disputa:</p>
-            {Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))).map((role: any) => (
-              <span key={role} className="inline-block bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded mr-2">{role}</span>
-            ))}
-          </div>
-          <div>
-            <label className="text-sm font-bold text-slate-500 uppercase block mb-2">Qtd. de Eleitores</label>
-            <input type="number" min={1} value={totalVoters} onChange={(e) => setTotalVoters(Math.max(1, parseInt(e.target.value) || 1))} className="w-full h-12 rounded-lg bg-slate-100 border-2 border-slate-200 px-4 text-xl font-black text-center focus:outline-none focus:border-blue-500" />
-          </div>
-          <button onClick={handleStartVoting} className="w-full py-4 rounded-lg bg-green-600 text-white font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-md">Iniciar Urna</button>
-          <button onClick={() => setPhase("select")} className="w-full py-2 text-sm font-bold text-slate-400 hover:text-slate-600">Cancelar</button>
+      {/* FASE 1: BOAS VINDAS */}
+      {phase === "welcome" && (
+        <div className="glass-panel p-12 rounded-3xl flex flex-col items-center max-w-lg w-[90%] text-center animate-in fade-in zoom-in duration-1000">
+          <div className="w-20 h-20 loader-ceeps mb-8"></div>
+          <h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-tight mb-2">
+            Bem-vindo às<br/>Eleições
+          </h1>
+          <h2 className="text-2xl font-bold text-blue-600 dark:text-blue-400">CEEPS 2026</h2>
+          <p className="mt-6 text-sm text-slate-500 dark:text-slate-400 font-medium">Preparando o ambiente seguro...</p>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  if (phase === "voting" && turma) {
-    return (
-      <div className="relative">
-        <Urna turma={turma} onVoteConfirmed={handleVote} onBack={() => setPhase("select")} voterNumber={currentVoter} totalVoters={totalVoters} />
-        <button onClick={handleOpenAdmin} className="fixed bottom-4 right-4 w-10 h-10 rounded-full bg-black/10 hover:bg-black/20 flex items-center justify-center transition-all"><ShieldCheck className="w-4 h-4 text-white" /></button>
-      </div>
-    );
-  }
+      {/* FASE 2: SELEÇÃO DE TURMAS */}
+      {phase === "select" && (
+        <div className="w-full h-full animate-in fade-in duration-700">
+          <TurmaSelection onSelect={handleSelectTurma} onAdmin={handleOpenAdmin} />
+        </div>
+      )}
 
-  if (phase === "admin") return <AdminPanel turma={turma} totalVoters={totalVoters} currentVoter={currentVoter} votingComplete={false} onBack={() => setPhase("select")} onTurmasChanged={() => {}} sessionId={currentSessionId} />;
+      {/* FASE 3: CONFIGURAÇÃO DA SESSÃO */}
+      {phase === "setup" && turma && (
+        <div className="w-[90%] max-w-sm glass-panel rounded-3xl p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {loadingCandidates ? (
+            <div className="flex flex-col items-center py-10"><Loader2 className="animate-spin w-8 h-8 text-blue-600 mb-4" /><p className="text-sm dark:text-slate-300">Carregando candidatos...</p></div>
+          ) : (
+            <div className="space-y-6">
+              <h1 className="text-2xl font-black uppercase text-blue-600 dark:text-blue-400 border-b border-slate-200 dark:border-slate-700 pb-4">{turma.name}</h1>
+              <div className="text-left space-y-2">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Cargos em Disputa:</p>
+                {Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))).map((role: any) => (
+                  <span key={role} className="inline-block bg-blue-100/80 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 text-xs font-bold px-2 py-1 rounded mr-2 mb-2">{role}</span>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-2">Qtd. de Eleitores Hoje</label>
+                <input type="number" min={1} value={totalVoters} onChange={(e) => setTotalVoters(Math.max(1, parseInt(e.target.value) || 1))} className="w-full h-12 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-600 px-4 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+              </div>
+              <button onClick={handleStartVoting} className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest transition-all shadow-lg hover:shadow-blue-500/30">Iniciar Urna</button>
+              <button onClick={() => setPhase("select")} className="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest">Cancelar</button>
+            </div>
+          )}
+        </div>
+      )}
 
-  return null;
+      {/* FASE 4: URNA ELETRÔNICA */}
+      {phase === "voting" && turma && (
+        <div className="w-full animate-in fade-in duration-500">
+          <Urna turma={turma} onVoteConfirmed={handleVote} onBack={() => setPhase("select")} voterNumber={currentVoter} totalVoters={totalVoters} />
+          <button onClick={handleOpenAdmin} className="fixed bottom-6 right-6 w-12 h-12 rounded-full glass-panel flex items-center justify-center transition-all hover:scale-110 z-50 text-slate-500 dark:text-slate-400"><ShieldCheck className="w-5 h-5" /></button>
+        </div>
+      )}
+
+      {/* FASE 5: PAINEL ADMINISTRATIVO */}
+      {phase === "admin" && (
+        <div className="w-full animate-in fade-in duration-500 z-10 relative">
+          <AdminPanel turma={turma} totalVoters={totalVoters} currentVoter={currentVoter} votingComplete={false} onBack={() => setPhase("select")} onTurmasChanged={() => {}} sessionId={currentSessionId} />
+        </div>
+      )}
+
+    </div>
+  );
 };
 
 export default Index;
