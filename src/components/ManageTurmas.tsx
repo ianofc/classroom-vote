@@ -5,18 +5,11 @@ import { toast } from "@/hooks/use-toast";
 
 interface Turma { id: string; name: string; }
 interface Student {
-  id: string; turma_id: string; name: string; document: string; contact: string;
+  id: string; turma_id: string; name: string; document?: string | null; contact?: string | null;
   is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string; photo_url?: string; vice_photo_url?: string;
 }
 
-// LISTA DE CARGOS DISPONÍVEIS
-const ROLES = [
-  "Líder Geral", 
-  "Líder Quilombola", 
-  "Líder Rural", 
-  "Líder LGBTQIA+", 
-  "Líder Indígena"
-];
+const ROLES = ["Líder Geral", "Líder Quilombola", "Líder Rural", "Líder LGBTQIA+", "Líder Indígena"];
 
 const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -24,7 +17,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Estados dos Formulários
   const [newTurmaName, setNewTurmaName] = useState("");
   const [newStudent, setNewStudent] = useState<Partial<Student>>({ 
     name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] 
@@ -78,16 +70,13 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     const fileExt = file.name.split('.').pop();
     const filePath = `fotos/${Math.random()}.${fileExt}`;
     const { error } = await supabase.storage.from('candidatos-fotos').upload(filePath, file);
-    if (error) {
-      toast({ title: "Erro na foto", description: error.message, variant: "destructive" });
-      return null;
-    }
+    if (error) return null;
     return supabase.storage.from('candidatos-fotos').getPublicUrl(filePath).data.publicUrl;
   };
 
   const handleAddStudent = async () => {
-    if (!selectedTurma || !newStudent.name || !newStudent.document) {
-      toast({ title: "Atenção", description: "Nome e documento são obrigatórios.", variant: "destructive" });
+    if (!selectedTurma || !newStudent.name) {
+      toast({ title: "Atenção", description: "O Nome do aluno é obrigatório.", variant: "destructive" });
       return;
     }
     if (newStudent.is_candidate && !newStudent.candidate_number) {
@@ -106,8 +95,8 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     const { data, error } = await supabase.from('students').insert({
       turma_id: selectedTurma.id, 
       name: newStudent.name.trim(), 
-      document: newStudent.document.trim(), 
-      contact: newStudent.contact,
+      document: newStudent.document?.trim() || null, 
+      contact: newStudent.contact?.trim() || null,
       is_candidate: newStudent.is_candidate, 
       candidate_role: newStudent.is_candidate ? newStudent.candidate_role : null,
       candidate_number: newStudent.is_candidate ? newStudent.candidate_number : null, 
@@ -121,10 +110,8 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
     else {
       setStudents([...students, data]);
-      // Reseta o formulário
       setNewStudent({ name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] });
-      setPhotoFile(null);
-      setVicePhotoFile(null);
+      setPhotoFile(null); setVicePhotoFile(null);
       toast({ title: "Sucesso", description: "Aluno cadastrado!" });
     }
   };
@@ -146,15 +133,16 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         const text = event.target?.result as string;
         const rows = text.split('\n').map(row => row.split(','));
         
+        // Pula o cabeçalho e exige apenas o NOME (row[0])
         const newStudents = rows.slice(1).map(row => ({
           turma_id: selectedTurma.id,
           name: row[0]?.trim(),
-          document: row[1]?.trim(),
-          contact: row[2]?.trim(),
+          document: row[1]?.trim() || null,
+          contact: row[2]?.trim() || null,
           is_candidate: false
-        })).filter(s => s.name && s.document);
+        })).filter(s => s.name); 
 
-        if (newStudents.length === 0) throw new Error("Nenhum aluno válido encontrado.");
+        if (newStudents.length === 0) throw new Error("Nenhum nome válido encontrado na primeira coluna.");
 
         const { data, error } = await supabase.from('students').insert(newStudents).select();
         if (error) throw error;
@@ -208,12 +196,11 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
               </label>
             </div>
 
-            {/* FORMULÁRIO DE CADASTRO */}
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
               <h4 className="text-sm font-bold text-slate-700">Cadastrar Manualmente</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" placeholder="Nome Completo do Aluno" className="w-full p-2 border rounded-md text-sm" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} />
-                <input type="text" placeholder="Documento (RG/CPF)" className="w-full p-2 border rounded-md text-sm" value={newStudent.document} onChange={e => setNewStudent({...newStudent, document: e.target.value})} />
+                <input type="text" placeholder="Nome Completo do Aluno *" className="w-full p-2 border rounded-md text-sm" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} />
+                <input type="text" placeholder="Documento (Opcional agora)" className="w-full p-2 border rounded-md text-sm" value={newStudent.document || ''} onChange={e => setNewStudent({...newStudent, document: e.target.value})} />
               </div>
               
               <div className="pt-2 border-t border-slate-200">
@@ -222,55 +209,45 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
                 </button>
               </div>
 
-              {/* CAMPOS SE FOR CANDIDATO */}
               {newStudent.is_candidate && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-xs font-bold text-slate-600 uppercase">A qual cargo esta chapa concorre?</label>
-                    <select 
-                      className="w-full p-2 border rounded-md text-sm font-bold text-slate-800 bg-white" 
-                      value={newStudent.candidate_role} 
-                      onChange={e => setNewStudent({...newStudent, candidate_role: e.target.value})}
-                    >
+                    <select className="w-full p-2 border rounded-md text-sm font-bold text-slate-800 bg-white" value={newStudent.candidate_role} onChange={e => setNewStudent({...newStudent, candidate_role: e.target.value})}>
                       {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </div>
-                  
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-600 uppercase">Número na Urna</label>
                     <input type="number" placeholder="Ex: 10" className="w-full p-2 border rounded-md text-sm" value={newStudent.candidate_number || ''} onChange={e => setNewStudent({...newStudent, candidate_number: parseInt(e.target.value)})} />
                   </div>
-                  
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-600 uppercase">Nome do Vice (Opcional)</label>
                     <input type="text" placeholder="Nome do companheiro de chapa" className="w-full p-2 border rounded-md text-sm" value={newStudent.vice_name || ''} onChange={e => setNewStudent({...newStudent, vice_name: e.target.value})} />
                   </div>
-
                   <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                    <label className="cursor-pointer bg-white border border-dashed border-slate-300 p-3 flex flex-col items-center justify-center text-xs text-slate-500 rounded-md hover:border-blue-500 hover:bg-slate-50">
-                      <Upload className="w-4 h-4 mb-1 text-blue-500" /> {photoFile ? <span className="text-green-600 font-bold">Foto do Titular OK</span> : "Anexar Foto Titular"}
+                    <label className="cursor-pointer bg-white border border-dashed border-slate-300 p-3 flex flex-col items-center justify-center text-xs text-slate-500 rounded-md hover:border-blue-500">
+                      <Upload className="w-4 h-4 mb-1 text-blue-500" /> {photoFile ? <span className="text-green-600 font-bold">Foto Titular OK</span> : "Foto Titular"}
                       <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files && setPhotoFile(e.target.files[0])} />
                     </label>
-                    
-                    <label className="cursor-pointer bg-white border border-dashed border-slate-300 p-3 flex flex-col items-center justify-center text-xs text-slate-500 rounded-md hover:border-blue-500 hover:bg-slate-50">
-                      <Upload className="w-4 h-4 mb-1 text-slate-400" /> {vicePhotoFile ? <span className="text-green-600 font-bold">Foto do Vice OK</span> : "Anexar Foto Vice"}
+                    <label className="cursor-pointer bg-white border border-dashed border-slate-300 p-3 flex flex-col items-center justify-center text-xs text-slate-500 rounded-md hover:border-blue-500">
+                      <Upload className="w-4 h-4 mb-1 text-slate-400" /> {vicePhotoFile ? <span className="text-green-600 font-bold">Foto Vice OK</span> : "Foto Vice"}
                       <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files && setVicePhotoFile(e.target.files[0])} />
                     </label>
                   </div>
                 </div>
               )}
               <button onClick={handleAddStudent} disabled={isUploading} className="w-full bg-slate-800 text-white font-bold py-3 rounded-lg flex justify-center gap-2 hover:bg-slate-900 disabled:opacity-50">
-                {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />} {isUploading ? "Salvando Dados..." : "Salvar Aluno"}
+                {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />} Salvar Aluno
               </button>
             </div>
 
-            {/* LISTA DE ALUNOS CADASTRADOS */}
             <div className="space-y-2 mt-6 max-h-[300px] overflow-y-auto">
               {students.map(s => (
                 <div key={s.id} className="p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm">
                   <div>
                     <p className="font-bold text-slate-800 text-sm">{s.name}</p>
-                    <p className="text-xs text-slate-500">Doc: {s.document}</p>
+                    <p className="text-xs text-slate-500">Doc: {s.document || "Pendente"}</p>
                     {s.is_candidate && (
                       <span className="inline-flex items-center mt-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
                         <UserCheck className="w-3 h-3 mr-1" /> {s.candidate_role} (Nº {s.candidate_number})
@@ -280,7 +257,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
                   <button onClick={() => handleDeleteStudent(s.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
-              {students.length === 0 && <p className="text-sm text-slate-500 text-center py-4">Nenhum aluno nesta turma.</p>}
             </div>
           </>
         )}
