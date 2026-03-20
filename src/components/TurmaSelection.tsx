@@ -1,61 +1,51 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { ShieldCheck, Loader2, Users } from "lucide-react";
+import { Users, ShieldCheck, Loader2 } from "lucide-react";
 
-export default function TurmaSelection({ onSelect, onAdmin }: any) {
+export default function TurmaSelection({ onSelect, onAdmin }: { onSelect: (t: any) => void, onAdmin: () => void }) {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      const { data: tData } = await supabase.from("turmas").select("*").order("name");
-      const { data: cData } = await supabase.from("students").select("*").eq("is_candidate", true);
-      
-      if (tData && cData) {
-        const formatted = tData.map(t => ({
-          id: t.id,
-          name: t.name,
-          candidates: cData.filter(c => c.turma_id === t.id).map(c => ({
-            number: c.candidate_number,
-            name: c.name,
-            photo: c.photo_url,
-            vice_name: c.vice_name,
-            vice_photo: c.vice_photo_url,
-            category: c.category || 'Líder Geral'
-          }))
-        }));
-        setTurmas(formatted);
-      }
+    const fetchTurmas = async () => {
+      const { data } = await supabase.from('turmas').select('*').order('name');
+      if (data) setTurmas(data);
       setLoading(false);
-    }
-    load();
+    };
+    fetchTurmas();
   }, []);
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /></div>;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-50">
-      <div className="w-full max-w-2xl text-center space-y-4 mb-10">
-        <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
-          <Users className="w-10 h-10 text-white" />
+      <div className="w-full max-w-md space-y-8">
+        <div className="text-center space-y-2">
+          <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <Users className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-black text-slate-800 uppercase tracking-tighter">Eleições CEEPS</h1>
+          <p className="text-slate-500 font-medium">Selecione sua turma para iniciar</p>
         </div>
-        <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Eleições CEEPS</h1>
-        <p className="text-slate-500 font-medium">Selecione a turma para iniciar a sessão de votação</p>
-      </div>
 
-      <div className="w-full max-w-3xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {turmas.map((t) => (
-          <button key={t.id} onClick={() => onSelect(t)} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-500 transition-all group text-left">
-            <h2 className="text-xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{t.name}</h2>
-            <p className="text-xs text-slate-400 mt-2">{t.candidates.length} candidatos registrados</p>
-          </button>
-        ))}
-        {turmas.length === 0 && <p className="col-span-full text-center text-slate-400">Nenhuma turma cadastrada no sistema.</p>}
-      </div>
+        {loading ? (
+          <div className="flex flex-col items-center py-10 text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin mb-2" /> Carregando turmas...
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {turmas.map((t) => (
+              <button key={t.id} onClick={() => onSelect(t)} className="w-full bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-blue-500 hover:shadow-md transition-all text-left group flex justify-between items-center">
+                <span className="font-bold text-slate-700 group-hover:text-blue-700">{t.name}</span>
+                <span className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity text-sm">Selecionar →</span>
+              </button>
+            ))}
+            {turmas.length === 0 && <p className="text-center text-slate-400">Nenhuma turma cadastrada.</p>}
+          </div>
+        )}
 
-      <button onClick={onAdmin} className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:scale-110 transition-all">
-        <ShieldCheck className="w-5 h-5" />
-      </button>
+        <button onClick={onAdmin} className="w-full flex items-center justify-center gap-2 py-4 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors mt-8 border-t border-slate-200">
+          <ShieldCheck className="w-4 h-4" /> Acesso da Gestão
+        </button>
+      </div>
     </div>
   );
 }
