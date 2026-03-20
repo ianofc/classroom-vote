@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { Turma } from "@/data/turmas";
-import { getSessionVoteReport } from "@/data/votes";
 import { supabase } from "@/lib/supabase";
 import { 
-  ArrowLeft, ShieldCheck, Hash, User, AlertTriangle, 
-  Lock, Eye, EyeOff, GraduationCap, Printer, FileText, 
-  Filter, Search, Calendar, CheckSquare, Trash2
+  ArrowLeft, ShieldCheck, FileText, 
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer 
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -24,30 +22,24 @@ interface ExtendedVoteRecord {
 
 interface AdminPanelProps {
   turma: Turma | null;
-  totalVoters: number;
-  currentVoter: number;
-  votingComplete: boolean;
-  sessionId: string | null;
   onBack: () => void;
   onTurmasChanged: () => void;
 }
 
-type Tab = "votes" | "reports" | "turmas" | "admins";
+// Removemos a aba "votes"
+type Tab = "reports" | "turmas" | "admins";
 
-const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionId, onBack, onTurmasChanged }: AdminPanelProps) => {
+const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>(turma ? "votes" : "turmas");
+  const [activeTab, setActiveTab] = useState<Tab>("reports");
   const [isPrinting, setIsPrinting] = useState(false);
   
-  const [realTimeVotes, setRealTimeVotes] = useState<ExtendedVoteRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
   const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [filters, setFilters] = useState({
     search: "",
-    turmaId: "",
+    turmaId: turma ? turma.id : "", // Se entrou pela turma, já filtra por ela
     voteType: "",
     date: ""
   });
@@ -55,20 +47,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
-
-  const fetchSessionVotes = async () => {
-    if (!sessionId) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("votes")
-      .select("id, voter_name, voter_document, voter_contact, candidate_number, vote_type, created_at")
-      .eq("session_id", sessionId)
-      .order("created_at", { ascending: true });
-
-    if (error) toast({ title: "Erro ao buscar dados", description: error.message, variant: "destructive" });
-    else setRealTimeVotes(data as ExtendedVoteRecord[]);
-    setLoading(false);
-  };
 
   const fetchAllReports = async () => {
     setReportLoading(true);
@@ -84,7 +62,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     setReportLoading(false);
   };
 
-  // Nova função para deletar VOTO DE TESTE
   const handleDeleteVote = async (id: string) => {
     if (!confirm("Atenção! Você está prestes a excluir este voto permanentemente do sistema. Continuar?")) return;
     
@@ -95,14 +72,12 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     } else {
       toast({ title: "Sucesso", description: "Voto excluído com sucesso." });
       setAllVotes(allVotes.filter(v => v.id !== id));
-      setRealTimeVotes(realTimeVotes.filter(v => v.id !== id));
     }
   };
 
   useEffect(() => {
-    if (activeTab === "votes" && sessionId) fetchSessionVotes();
     if (activeTab === "reports") fetchAllReports();
-  }, [activeTab, sessionId]);
+  }, [activeTab]);
 
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
@@ -117,13 +92,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
   }, [allVotes, filters]);
 
   const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
-
-  const getCandidateDisplay = (vote: ExtendedVoteRecord) => {
-    if (vote.vote_type === "branco") return "BRANCO";
-    if (vote.vote_type === "nulo") return "NULO";
-    const cand = turma?.candidates?.find(c => c.number === vote.candidate_number);
-    return cand ? cand.name : `Candidato ${vote.candidate_number || '?'}`;
-  };
 
   const printFilteredReport = () => {
     setIsPrinting(true);
@@ -196,23 +164,21 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
     }
   };
 
-  const progress = totalVoters > 0 ? (realTimeVotes.length / totalVoters) * 100 : 0;
-
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-slate-50 text-slate-900">
       {/* Cabeçalho Global */}
       <div className="w-full max-w-5xl flex justify-between items-center mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Painel Inicial
+          <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
         <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
-          <ShieldCheck className="w-4 h-4" /> ADMIN MODE
+          <ShieldCheck className="w-4 h-4" /> COMISSÃO ELEITORAL
         </div>
       </div>
 
-      {/* Tabs Menu */}
-      <div className="w-full max-w-5xl grid grid-cols-2 md:grid-cols-4 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
-        {(["votes", "reports", "turmas", "admins"] as Tab[]).map((tab) => (
+      {/* Tabs Menu (Sem a aba de votos) */}
+      <div className="w-full max-w-5xl grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
+        {(["reports", "turmas", "admins"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -220,11 +186,10 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
               activeTab === tab ? "bg-blue-600 text-white shadow-md" : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            {tab === "votes" && <Hash className="w-4 h-4" />}
-            {tab === "reports" && <Filter className="w-4 h-4" />}
+            {tab === "reports" && <FileText className="w-4 h-4" />}
             {tab === "turmas" && <GraduationCap className="w-4 h-4" />}
             {tab === "admins" && <ShieldCheck className="w-4 h-4" />}
-            {tab === "reports" ? "RELATÓRIOS" : tab.toUpperCase()}
+            {tab === "reports" ? "RELATÓRIOS E VOTOS" : tab.toUpperCase()}
           </button>
         ))}
       </div>
@@ -236,7 +201,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3">
-                <FileText className="w-5 h-5 text-blue-600" /> Relatório Geral e Pesquisa
+                <Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Pesquisa
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
@@ -286,7 +251,7 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                 <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem de Votos</span>
+                 <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem de Votos e Auditoria</span>
                  <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1 shadow-sm">
                     {showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                     {showVotes ? "OCULTAR" : "MOSTRAR"}
@@ -338,69 +303,6 @@ const AdminPanel = ({ turma, totalVoters, currentVoter, votingComplete, sessionI
                 )}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ABA DE VOTOS (SESSÃO ATUAL) */}
-        {activeTab === "votes" && turma && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-6">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Progresso da Urna</h3>
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-3xl font-black text-blue-600">{realTimeVotes.length}</span>
-                  <span className="text-sm font-bold text-slate-400">/ {totalVoters} Alunos</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-              {votingComplete && (
-                <div className="bg-green-50 border border-green-200 p-5 rounded-2xl">
-                  <div className="flex items-center gap-2 text-green-700 font-bold mb-2">
-                    <CheckSquare className="w-5 h-5" /> Urna Finalizada
-                  </div>
-                  <p className="text-sm text-green-600">Para ver o panorama geral e aplicar filtros, acesse a aba <strong>Relatórios</strong>.</p>
-                </div>
-              )}
-            </div>
-            <div className="md:col-span-2">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-full">
-                <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                  <h2 className="font-black text-slate-700 flex items-center gap-2 uppercase text-xs tracking-tighter">
-                    <FileText className="w-4 h-4" /> Auditoria da Sessão
-                  </h2>
-                  <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border border-slate-300 px-2 py-1.5 rounded hover:bg-slate-50">
-                    {showVotes ? "OCULTAR" : "MOSTRAR"}
-                  </button>
-                </div>
-                <div className="max-h-[400px] overflow-y-auto p-2">
-                  {loading ? <div className="p-8 text-center text-slate-400 font-bold">CARREGANDO...</div> :
-                   realTimeVotes.length === 0 ? <div className="p-8 text-center text-slate-400">Aguardando votos...</div> :
-                   <table className="w-full text-left text-sm">
-                     <tbody>
-                       {realTimeVotes.map((v, i) => (
-                         <tr key={i} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
-                           <td className="p-3"><p className="font-bold">{v.voter_name}</p><p className="text-[10px] text-slate-400">{v.voter_document || "Sem doc"}</p></td>
-                           <td className="p-3 text-right">
-                             {showVotes ? <span className="font-bold text-blue-600">{getCandidateDisplay(v)}</span> : <Lock className="w-3 h-3 text-slate-300 inline" />}
-                           </td>
-                         </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                  }
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* AVISO QUANDO NÃO HÁ URNA ATIVA */}
-        {activeTab === "votes" && !turma && (
-          <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center text-slate-500">
-            <AlertTriangle className="w-10 h-10 mx-auto mb-4 opacity-50" />
-            <p>Nenhuma urna ativa no momento. Acesse <strong>Turmas</strong> para iniciar ou <strong>Relatórios</strong> para ver o histórico.</p>
           </div>
         )}
 
