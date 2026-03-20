@@ -1,74 +1,57 @@
-
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 220 20% 10%;
-    --foreground: 0 0% 95%;
-
-    --card: 220 18% 14%;
-    --card-foreground: 0 0% 95%;
-
-    --popover: 220 18% 14%;
-    --popover-foreground: 0 0% 95%;
-
-    --primary: 145 63% 42%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 45 100% 51%;
-    --secondary-foreground: 220 20% 10%;
-
-    --muted: 220 15% 20%;
-    --muted-foreground: 220 10% 60%;
-
-    --accent: 145 63% 42%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 220 15% 25%;
-    --input: 220 15% 25%;
-    --ring: 145 63% 42%;
-
-    --radius: 0.5rem;
-
-    --urna-body: 220 15% 18%;
-    --urna-screen: 200 30% 92%;
-    --urna-screen-foreground: 220 20% 10%;
-    --urna-key: 220 10% 30%;
-    --urna-key-foreground: 0 0% 90%;
-    --urna-key-hover: 220 10% 38%;
-    --urna-confirm: 145 63% 42%;
-    --urna-correct: 30 100% 50%;
-    --urna-blank: 0 0% 95%;
-
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+  body {
+    @apply font-sans antialiased text-slate-900 dark:text-slate-100;
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
+/* Fundo Animado - Aurora Clean */
+.bg-aurora {
+  @apply relative min-h-screen w-full overflow-hidden bg-[#f8fafc] dark:bg-[#020617] transition-colors duration-700 z-0;
+}
 
-  body {
-    @apply bg-background text-foreground font-sans;
-    font-family: 'Inter', sans-serif;
-  }
+.bg-aurora::before,
+.bg-aurora::after {
+  content: "";
+  @apply absolute rounded-full opacity-40 dark:opacity-20 blur-[100px] transition-all duration-1000 -z-10;
+  animation: float 12s infinite alternate ease-in-out;
+}
 
-  .font-mono-display {
-    font-family: 'JetBrains Mono', monospace;
-  }
+/* Cores da Bahia no Modo Claro (Azul e Vermelho), Tons escuros no Dark */
+.bg-aurora::before {
+  @apply bg-blue-600/30 dark:bg-blue-600/20 w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] top-[-10%] left-[-10%];
+}
+
+.bg-aurora::after {
+  @apply bg-red-600/20 dark:bg-indigo-900/30 w-[50vw] h-[50vw] max-w-[500px] max-h-[500px] bottom-[-5%] right-[-5%];
+  animation-delay: -5s;
+}
+
+@keyframes float {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(5%, 5%) scale(1.1); }
+}
+
+/* Efeito Glassmorphism Padronizado */
+.glass-panel {
+  @apply bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border border-white/50 dark:border-slate-700/50 shadow-2xl;
+}
+
+/* Loader Personalizado CEEPS */
+.loader-ceeps {
+  border: 4px solid rgba(37, 99, 235, 0.2); /* Azul suave */
+  border-top-color: #2563eb; /* Azul forte */
+  border-bottom-color: #dc2626; /* Vermelho Bahia */
+  border-radius: 50%;
+  animation: spin 1s cubic-bezier(0.55, 0.15, 0.45, 0.85) infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
