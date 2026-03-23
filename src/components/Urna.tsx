@@ -5,7 +5,7 @@ import { toast } from "@/hooks/use-toast";
 
 const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
   const [step, setStep] = useState<'identificacao' | 'urna'>('identificacao');
-  const [voterData, setVoterData] = useState({ name: "" }); // Agora só pede o nome
+  const [voterData, setVoterData] = useState({ name: "" }); 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
@@ -38,7 +38,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
 
   const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-  // ----- VALIDAÇÃO DO NOME DO ALUNO -----
   const handleLiberarUrna = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voterData.name.trim()) {
@@ -52,7 +51,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
     const studentEncontrado = turmaStudents.find(s => normalize(s.name) === normalize(nameTrimmed));
 
     if (!studentEncontrado) {
-      // Se não estiver na lista de alunos prévia, auto-cadastra ele para ter o controle do nome na auditoria
       const { error } = await supabase
         .from('students')
         .insert({ turma_id: turma.id, name: nameTrimmed, is_candidate: false });
@@ -186,23 +184,9 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
                     </div>
 
                     {digits.length === maxDigits && candidate ? (
-                      <div className="flex flex-col gap-3 pl-6 border-l-4 border-slate-300 animate-in fade-in slide-in-from-left-4 duration-300">
-                        <div className="flex items-end gap-4 mb-2">
-                          <div className="w-[120px] h-[160px] border-2 border-slate-800 bg-white flex flex-col shadow-md rounded-sm overflow-hidden">
-                            {candidate.photo_url ? <img src={candidate.photo_url} className="w-full flex-1 object-cover" alt="Titular" /> : <div className="flex-1 flex items-center justify-center text-xs text-slate-400 font-bold bg-slate-100">Sem Foto</div>}
-                            <div className="bg-slate-800 text-white text-[10px] text-center py-1.5 uppercase font-bold tracking-widest">Titular</div>
-                          </div>
-                          {(candidate.vice_name || candidate.vice_photo_url) && (
-                            <div className="w-[90px] h-[120px] border-2 border-slate-800 bg-white flex flex-col shadow-md rounded-sm overflow-hidden">
-                              {candidate.vice_photo_url ? <img src={candidate.vice_photo_url} className="w-full flex-1 object-cover" alt="Vice" /> : <div className="flex-1 flex items-center justify-center text-[10px] text-slate-400 font-bold bg-slate-100 text-center px-2">Sem Foto</div>}
-                              <div className="bg-slate-800 text-white text-[9px] text-center py-1 uppercase font-bold tracking-widest">Vice</div>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-black text-3xl text-slate-800 leading-none mb-2">{candidate.name}</p>
-                          {candidate.vice_name && <p className="font-bold text-sm text-slate-600 bg-slate-200 inline-block px-2 py-1 rounded">Vice: {candidate.vice_name}</p>}
-                        </div>
+                      <div className="flex flex-col justify-center pl-6 border-l-4 border-slate-300 animate-in fade-in slide-in-from-left-4 duration-300 h-full">
+                        <p className="font-black text-4xl text-slate-800 leading-none mb-3">{candidate.name}</p>
+                        {candidate.vice_name && <p className="font-bold text-lg text-slate-600 bg-slate-200 inline-block px-3 py-1 rounded">Vice: {candidate.vice_name}</p>}
                       </div>
                     ) : digits.length === maxDigits ? (
                       <div className="pl-6 flex items-center h-full animate-in fade-in duration-300">
