@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, XCircle
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, User, PieChart
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -31,16 +31,15 @@ type Tab = "apuracao" | "reports" | "turmas" | "admins";
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("apuracao"); // Agora abre direto na apuração
+  const [activeTab, setActiveTab] = useState<Tab>("apuracao"); // Abre no Dashboard direto
   const [isPrinting, setIsPrinting] = useState(false);
   
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
   const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
-  const [allCandidates, setAllCandidates] = useState<any[]>([]); // Para puxar fotos e nomes na apuração
+  const [allCandidates, setAllCandidates] = useState<any[]>([]); 
   
   const [reportLoading, setReportLoading] = useState(false);
   
-  // Filtros de Relatórios
   const [filters, setFilters] = useState({
     search: "",
     turmaId: turma ? turma.id : "", 
@@ -48,7 +47,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     date: ""
   });
 
-  // Filtro específico para a aba de Apuração
   const [apuracaoTurmaId, setApuracaoTurmaId] = useState(turma ? turma.id : "");
 
   useEffect(() => {
@@ -68,7 +66,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     
     if (turmasRes.data) {
       setAllTurmas(turmasRes.data);
-      // Se não tem turma selecionada, seleciona a primeira da lista para a Apuração não ficar vazia
       if (!apuracaoTurmaId && turmasRes.data.length > 0) {
         setApuracaoTurmaId(turmasRes.data[0].id);
       }
@@ -80,7 +77,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   };
 
   const handleDeleteVote = async (id: string) => {
-    if (!confirm("Atenção! Você está prestes a excluir este voto permanentemente do sistema. Continuar?")) return;
+    if (!confirm("Atenção! Excluir este voto permanentemente?")) return;
     const { error } = await supabase.from('votes').delete().eq('id', id);
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
@@ -94,24 +91,30 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     if (activeTab === "reports" || activeTab === "apuracao") fetchAllData();
   }, [activeTab]);
 
-  // ================== LÓGICA DE MATEMÁTICA DA APURAÇÃO ==================
+  // ================== LÓGICA DO DASHBOARD DE APURAÇÃO ==================
+  const apuracaoOverview = useMemo(() => {
+    if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
+    const tVotes = allVotes.filter(v => v.turma_id === apuracaoTurmaId);
+    return {
+      total: tVotes.length,
+      validos: tVotes.filter(v => v.vote_type === 'candidate').length,
+      brancos: tVotes.filter(v => v.vote_type === 'branco').length,
+      nulos: tVotes.filter(v => v.vote_type === 'nulo').length
+    };
+  }, [apuracaoTurmaId, allVotes]);
+
   const apuracaoResults = useMemo(() => {
     if (!apuracaoTurmaId) return null;
     
-    // Pega só os votos e candidatos da turma selecionada
     const turmaVotes = allVotes.filter(v => v.turma_id === apuracaoTurmaId);
     const turmaCandidates = allCandidates.filter(c => c.turma_id === apuracaoTurmaId);
-    
-    // Descobre quais cargos estão em disputa nesta turma (Geral, Rural, etc)
     const roles = Array.from(new Set(turmaCandidates.map(c => c.candidate_role)));
     
-    // Calcula os votos para cada cargo
     const resultsByRole = roles.map(role => {
       const votesForRole = turmaVotes.filter(v => v.candidate_role === role || (!v.candidate_role && role === "Líder Geral"));
       const totalVotes = votesForRole.length;
       const candidatesForRole = turmaCandidates.filter(c => c.candidate_role === role);
       
-      // Conta votos por candidato
       const candidateResults = candidatesForRole.map(c => {
         const vCount = votesForRole.filter(v => v.vote_type === 'candidate' && v.candidate_number === c.candidate_number).length;
         return { 
@@ -119,9 +122,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           votes: vCount, 
           percentage: totalVotes > 0 ? (vCount / totalVotes) * 100 : 0 
         };
-      }).sort((a, b) => b.votes - a.votes); // Ordena do mais votado pro menos votado
+      }).sort((a, b) => b.votes - a.votes);
       
-      // Conta brancos e nulos
       const brancos = votesForRole.filter(v => v.vote_type === 'branco').length;
       const nulos = votesForRole.filter(v => v.vote_type === 'nulo').length;
       
@@ -137,8 +139,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     return resultsByRole;
   }, [apuracaoTurmaId, allVotes, allCandidates]);
 
-
-  // ================== LÓGICA DOS RELATÓRIOS (TABELA) ==================
+  // ================== LÓGICA DA AUDITORIA (TABELA) ==================
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
       const s = filters.search.toLowerCase();
@@ -236,7 +237,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
         <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
-          <ShieldCheck className="w-4 h-4" /> COMISSÃO ELEITORAL
+          <ShieldCheck className="w-4 h-4" /> GESTÃO DE ELEIÇÕES
         </div>
       </div>
 
@@ -254,24 +255,25 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             {tab === "reports" && <FileText className="w-4 h-4" />}
             {tab === "turmas" && <GraduationCap className="w-4 h-4" />}
             {tab === "admins" && <ShieldCheck className="w-4 h-4" />}
-            {tab === "reports" ? "AUDITORIA" : tab.toUpperCase()}
+            {tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab.toUpperCase()}
           </button>
         ))}
       </div>
 
       <div className="w-full max-w-5xl">
         
-        {/* ABA DE APURAÇÃO (NOVA) */}
+        {/* ======================= ABA DE DASHBOARD (APURAÇÃO) ======================= */}
         {activeTab === "apuracao" && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Seletor de Turmas do Dashboard */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <BarChart3 className="w-6 h-6 text-green-600" />
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                  <PieChart className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800 tracking-tight">Apuração em Tempo Real</h2>
-                  <p className="text-sm text-slate-500 font-medium">Acompanhe a contagem de votos por turma</p>
+                  <p className="text-sm text-slate-500 font-medium">Análise de votos computados por turma</p>
                 </div>
               </div>
               <div className="w-full md:w-1/3">
@@ -286,19 +288,39 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               </div>
             </div>
 
+            {/* Painéis de Resumo (Cards) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase">Votos Computados</p>
+                <p className="text-3xl font-black text-blue-600 mt-1">{apuracaoOverview.total}</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase">Votos Válidos</p>
+                <p className="text-3xl font-black text-green-600 mt-1">{apuracaoOverview.validos}</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase">Votos em Branco</p>
+                <p className="text-3xl font-black text-slate-600 mt-1">{apuracaoOverview.brancos}</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase">Votos Nulos</p>
+                <p className="text-3xl font-black text-orange-500 mt-1">{apuracaoOverview.nulos}</p>
+              </div>
+            </div>
+
             {reportLoading ? (
               <div className="py-12 text-center text-slate-400 font-bold animate-pulse">Calculando resultados...</div>
             ) : !apuracaoTurmaId ? (
               <div className="py-12 text-center text-slate-400">Selecione uma turma acima para ver os resultados.</div>
             ) : apuracaoResults?.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">Nenhum candidato ou voto registrado nesta turma ainda.</div>
+              <div className="py-12 text-center text-slate-400">Nenhum candidato registrado nesta turma ainda.</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {apuracaoResults?.map((result, idx) => (
                   <div key={idx} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                     <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
                       <h3 className="text-lg font-black uppercase tracking-widest">{result.role}</h3>
-                      <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos computados</span>
+                      <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos no cargo</span>
                     </div>
                     
                     <div className="p-6 flex-1 space-y-6">
@@ -309,11 +331,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                           <div key={cand.id} className="relative">
                             <div className="flex items-center gap-4 mb-2">
                               {/* Foto Redonda do Candidato */}
-                              <div className="w-12 h-12 rounded-full border-2 border-slate-200 overflow-hidden bg-slate-100 flex-shrink-0">
+                              <div className="w-12 h-12 rounded-full border-2 border-slate-200 overflow-hidden bg-slate-100 flex flex-shrink-0 items-center justify-center">
                                 {cand.photo_url ? (
                                   <img src={cand.photo_url} alt={cand.name} className="w-full h-full object-cover" />
                                 ) : (
-                                  <User className="w-6 h-6 text-slate-400 m-auto mt-2" />
+                                  <User className="w-6 h-6 text-slate-400" />
                                 )}
                               </div>
                               
@@ -348,7 +370,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                           <span>{result.brancos.votes}</span>
                         </div>
                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-slate-400 h-full" style={{ width: `${result.brancos.percentage}%` }}></div>
+                          <div className="bg-slate-400 h-full transition-all duration-1000" style={{ width: `${result.brancos.percentage}%` }}></div>
                         </div>
                       </div>
                       <div>
@@ -357,7 +379,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                           <span>{result.nulos.votes}</span>
                         </div>
                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-orange-500 h-full" style={{ width: `${result.nulos.percentage}%` }}></div>
+                          <div className="bg-orange-500 h-full transition-all duration-1000" style={{ width: `${result.nulos.percentage}%` }}></div>
                         </div>
                       </div>
                     </div>
@@ -368,9 +390,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ABA DE RELATÓRIOS E AUDITORIA (MANTIDA INTACTA) */}
+        {/* ======================= ABA DE AUDITORIA ======================= */}
         {activeTab === "reports" && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3">
                 <Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria
@@ -476,14 +498,14 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
         {/* ABA DE TURMAS */}
         {activeTab === "turmas" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300">
             <ManageTurmas onTurmasChanged={onTurmasChanged} />
           </div>
         )}
 
         {/* ABA DE ADMINS */}
         {activeTab === "admins" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300">
             <ManageAdmins />
           </div>
         )}
