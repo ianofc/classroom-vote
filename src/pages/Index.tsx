@@ -58,8 +58,20 @@ const Index = () => {
       vote_type: vote.type
     }));
     
-    await supabase.from('votes').insert(rowsToInsert);
+    // Tenta salvar os votos no banco
+    const { error } = await supabase.from('votes').insert(rowsToInsert);
 
+    // SE DER MERDA, AVISA E TRAVA!
+    if (error) {
+      toast({ 
+        title: "Erro grave ao salvar o voto!", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+      return; // Interrompe a função, não avança a urna
+    }
+
+    // Se deu tudo certo, avança para o próximo
     if (currentVoter >= totalVoters) {
       toast({ title: "Fim", description: "Todos os eleitores desta sessão votaram." });
       setPhase("select");
