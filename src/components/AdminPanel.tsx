@@ -121,7 +121,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
             th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
             th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; }
-            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px; }
+            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; }
+            .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
             @media print {
               @page { margin: 1cm; size: A4 portrait; }
               button { display: none; }
@@ -148,12 +149,14 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           <div class="rodape">
             Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema de Votação CEEPS.<br/>
             Para salvar em PDF, utilize a opção "Salvar como PDF" no destino de impressão.
+            <div class="creditos">
+              Sistema Desenvolvido por Ian Santos
+            </div>
           </div>
           <script>window.onload = function() { window.print(); }</script>
         </body>
       </html>
     `;
-
     const printWindow = window.open("", "_blank");
     if (printWindow) {
       printWindow.document.write(reportHtml);
