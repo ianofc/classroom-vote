@@ -31,7 +31,7 @@ type Tab = "apuracao" | "reports" | "turmas" | "admins";
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [showVotes, setShowVotes] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("apuracao"); // Abre no Dashboard direto
+  const [activeTab, setActiveTab] = useState<Tab>("apuracao");
   const [isPrinting, setIsPrinting] = useState(false);
   
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
@@ -91,6 +91,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     if (activeTab === "reports" || activeTab === "apuracao") fetchAllData();
   }, [activeTab]);
 
+  const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
+
   // ================== LÓGICA DO DASHBOARD DE APURAÇÃO ==================
   const apuracaoOverview = useMemo(() => {
     if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
@@ -139,6 +141,122 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     return resultsByRole;
   }, [apuracaoTurmaId, allVotes, allCandidates]);
 
+  // ================== IMPRESSÃO DO DASHBOARD (BOLETIM DE URNA) ==================
+  const printDashboardReport = () => {
+    setIsPrinting(true);
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    const turmaName = escapeHtml(getTurmaName(apuracaoTurmaId));
+
+    let rolesHtml = '';
+    if (apuracaoResults && apuracaoResults.length > 0) {
+      rolesHtml = apuracaoResults.map(result => {
+        let candidatesHtml = result.candidateResults.map((c: any, idx: number) => `
+          <tr>
+            <td style="text-align: center; font-weight: bold;">${idx + 1}º</td>
+            <td><strong>${escapeHtml(c.name)}</strong> ${c.vice_name ? `<br/><small style="color: #666;">Vice: ${escapeHtml(c.vice_name)}</small>` : ''}</td>
+            <td style="text-align: center; font-weight: bold;">Nº ${c.candidate_number}</td>
+            <td style="text-align: right;"><strong>${c.votes}</strong> (${c.percentage.toFixed(1)}%)</td>
+          </tr>
+        `).join('');
+
+        if (result.candidateResults.length === 0) {
+          candidatesHtml = `<tr><td colspan="4" style="text-align: center; color: #666; padding: 20px;">Nenhum candidato registrado para este cargo.</td></tr>`;
+        }
+
+        return `
+          <div class="role-section">
+            <h2>Cargo: ${escapeHtml(result.role)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th width="60" style="text-align: center;">Posição</th>
+                  <th>Candidato / Chapa</th>
+                  <th width="80" style="text-align: center;">Número</th>
+                  <th width="120" style="text-align: right;">Votos Computados</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${candidatesHtml}
+              </tbody>
+            </table>
+            <div class="role-summary">
+              <span><strong>Brancos:</strong> ${result.brancos.votes} (${result.brancos.percentage.toFixed(1)}%)</span>
+              <span><strong>Nulos:</strong> ${result.nulos.votes} (${result.nulos.percentage.toFixed(1)}%)</span>
+              <span><strong>Total do Cargo:</strong> ${result.totalVotes}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      rolesHtml = `<p style="text-align: center; color: #666; margin-top: 40px;">Nenhum dado de votação encontrado para esta turma.</p>`;
+    }
+
+    const reportHtml = `
+      <html>
+        <head>
+          <title>Boletim de Urna - ${turmaName}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; }
+            .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; }
+            .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; }
+            .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; }
+            .overview div:last-child { border-right: none; }
+            .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; }
+            .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; }
+            .role-section { margin-bottom: 40px; page-break-inside: avoid; }
+            .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; }
+            th, td { border: 1px solid #ccc; padding: 12px; text-align: left; }
+            th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; }
+            .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; }
+            .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+            @media print {
+              @page { margin: 1.5cm; size: A4 portrait; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho">
+            <h1>CEEPS Seabra-Ba</h1>
+            <div class="sub">Boletim de Urna - Resultado Oficial da Apuração</div>
+            <h3 style="margin-top: 15px; font-size: 18px; color: #333;">Turma Analisada: ${turmaName}</h3>
+          </div>
+          
+          <div class="overview">
+            <div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div>
+            <div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div>
+            <div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div>
+            <div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div>
+          </div>
+
+          ${rolesHtml}
+          
+          <div class="rodape">
+            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema Oficial de Votação CEEPS.<br/>
+            Este boletim reflete a exata contagem dos votos criptografados e registrados no banco de dados em nuvem.
+            <div class="creditos">
+              Sistema Desenvolvido por Ian Santos
+            </div>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(reportHtml);
+      printWindow.document.close();
+      setTimeout(() => { setIsPrinting(false); }, 1000);
+    } else {
+      setIsPrinting(false);
+    }
+  };
+
   // ================== LÓGICA DA AUDITORIA (TABELA) ==================
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
@@ -150,8 +268,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       return matchSearch && matchTurma && matchType && matchDate;
     });
   }, [allVotes, filters]);
-
-  const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
 
   const printFilteredReport = () => {
     setIsPrinting(true);
@@ -172,11 +288,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     const reportHtml = `
       <html>
         <head>
-          <title>Relatório de Votação - CEEPS</title>
+          <title>Auditoria de Votação - CEEPS</title>
           <style>
             body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
             .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; }
+            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; }
             .sub { color: #666; font-size: 14px; margin-top: 5px; }
             .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
@@ -193,7 +309,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         <body>
           <div class="cabecalho">
             <h1>CEEPS Seabra-Ba</h1>
-            <div class="sub">Relatório Oficial de Apuração e Auditoria</div>
+            <div class="sub">Relatório Oficial de Auditoria Cadastral</div>
           </div>
           <div class="filters">
             <strong>Filtros aplicados na pesquisa:</strong><br/>
@@ -208,7 +324,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             <tbody>${rows}</tbody>
           </table>
           <div class="rodape">
-            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema de Votação CEEPS.<br/>
+            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema Oficial de Votação CEEPS.<br/>
             Para salvar em PDF, utilize a opção "Salvar como PDF" no destino de impressão.
             <div class="creditos">
               Sistema Desenvolvido por Ian Santos
@@ -272,19 +388,27 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <PieChart className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-800 tracking-tight">Apuração em Tempo Real</h2>
+                  <h2 className="text-xl font-black text-slate-800 tracking-tight">Apuração Oficial</h2>
                   <p className="text-sm text-slate-500 font-medium">Análise de votos computados por turma</p>
                 </div>
               </div>
-              <div className="w-full md:w-1/3">
+              <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
                 <select 
-                  className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-blue-500 transition-colors" 
+                  className="w-full md:w-64 p-3 border-2 border-slate-200 rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-blue-500 transition-colors" 
                   value={apuracaoTurmaId} 
                   onChange={e => setApuracaoTurmaId(e.target.value)}
                 >
                   <option value="" disabled>Selecione a Turma...</option>
                   {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+                
+                <button 
+                  onClick={printDashboardReport} 
+                  disabled={isPrinting || !apuracaoTurmaId} 
+                  className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF / Imprimir"}
+                </button>
               </div>
             </div>
 
