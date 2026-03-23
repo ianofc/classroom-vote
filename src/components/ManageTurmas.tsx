@@ -9,7 +9,7 @@ interface Student {
   is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string;
 }
 
-// ==================== LISTA DE CARGOS CORRIGIDA ====================
+// Lista de Cargos Atualizada
 const ROLES = [
   "Líder Geral", 
   "Líder Quilombola", 
@@ -169,7 +169,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     if (!error) setStudents(students.filter(s => s.id !== id));
   };
 
-  // ==================== IMPORTAÇÃO E IMPRESSÃO (CARTAZ GERAL) ====================
+  // ==================== IMPORTAÇÃO E IMPRESSÃO ====================
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedTurma) return;
@@ -203,6 +203,75 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     reader.readAsText(file, 'UTF-8');
   };
 
+  // IMPRESSÃO DE CARTAZ PARA UMA ÚNICA TURMA (COMPACTO)
+  const printCandidatesList = () => {
+    const candidates = students.filter(s => s.is_candidate);
+    if (candidates.length === 0) {
+      toast({ title: "Atenção", description: "Não há candidatos cadastrados para imprimir.", variant: "destructive" });
+      return;
+    }
+
+    const grouped: Record<string, Student[]> = {};
+    candidates.forEach(c => {
+      const role = c.candidate_role || "Líder Geral";
+      if (!grouped[role]) grouped[role] = [];
+      grouped[role].push(c);
+    });
+
+    let htmlContent = "";
+    Object.keys(grouped).sort().forEach(role => {
+      htmlContent += `<div class="role-title">${role}</div>`;
+      htmlContent += `<table><tr><th width="80">Nº Chapa</th><th>Candidato (Titular)</th><th>Vice (Se houver)</th></tr>`;
+      
+      grouped[role].sort((a, b) => (a.candidate_number || 0) - (b.candidate_number || 0)).forEach(c => {
+        htmlContent += `
+          <tr>
+            <td style="text-align: center; font-size: 18px; font-weight: 900; color: #202683;">${c.candidate_number}</td>
+            <td style="font-size: 16px; font-weight: bold; text-transform: uppercase;">${c.name}</td>
+            <td style="font-size: 14px; color: #555; text-transform: uppercase;">${c.vice_name || '-'}</td>
+          </tr>
+        `;
+      });
+      htmlContent += `</table>`;
+    });
+
+    const printHtml = `
+      <html>
+        <head>
+          <title>Candidatos - ${selectedTurma?.name}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #202683; padding-bottom: 10px; }
+            h1 { margin: 0; font-size: 20px; text-transform: uppercase; color: #202683; }
+            h2 { margin: 5px 0 0 0; font-size: 16px; color: #444; }
+            .role-title { background-color: #f1f5f9; padding: 6px 10px; font-size: 14px; font-weight: bold; text-transform: uppercase; border-left: 4px solid #202683; margin-top: 15px; margin-bottom: 5px;}
+            table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+            th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+            th { background-color: #e2e8f0; font-size: 12px; text-transform: uppercase; color: #555; }
+            .rodape { text-align: center; font-size: 10px; color: #888; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px; }
+            @media print { @page { margin: 1cm; size: A4 portrait; } body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho">
+            <h1>Eleições CEEPS 2026</h1>
+            <h2>Candidatos - ${selectedTurma?.name}</h2>
+          </div>
+          ${htmlContent}
+          <div class="rodape">Documento Oficial - Cole na porta da sala de votação.</div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+    }
+  };
+
+  // IMPRESSÃO DE CARTAZ GERAL IGNORANDO A TURMA "TESTE"
   const printAllCandidatesList = async () => {
     setIsPrinting(true);
     
@@ -226,9 +295,17 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     });
 
     let htmlContent = "";
-
-    const sortedTurmas = [...turmas].sort((a, b) => a.name.localeCompare(b.name));
     
+    // Filtra para remover qualquer turma que tenha "teste" no nome e ordena alfabeticamente
+    const sortedTurmas = [...turmas]
+      .filter(t => !t.name.toLowerCase().includes('teste')) 
+      .sort((a, b) => a.name.localeCompare(b.name));
+    
+    if (sortedTurmas.length === 0) {
+      toast({ title: "Atenção", description: "Só existem turmas de teste. Nada para imprimir no cartaz geral.", variant: "destructive" });
+      return;
+    }
+
     sortedTurmas.forEach(turma => {
       const candidatesInTurma = groupedByTurma[turma.id];
       if (!candidatesInTurma || candidatesInTurma.length === 0) return; 
@@ -245,14 +322,14 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
 
       Object.keys(groupedByRole).sort().forEach(role => {
         htmlContent += `<div class="role-title">${role}</div>`;
-        htmlContent += `<table><tr><th width="100">Nº da Chapa</th><th>Candidato (Titular)</th><th>Vice (Se houver)</th></tr>`;
+        htmlContent += `<table><tr><th width="80">Nº Chapa</th><th>Candidato (Titular)</th><th>Vice (Se houver)</th></tr>`;
         
         groupedByRole[role].sort((a, b) => (a.candidate_number || 0) - (b.candidate_number || 0)).forEach(c => {
           htmlContent += `
             <tr>
-              <td style="text-align: center; font-size: 26px; font-weight: 900; color: #202683;">${c.candidate_number}</td>
-              <td style="font-size: 20px; font-weight: bold; text-transform: uppercase; color: #111;">${c.name}</td>
-              <td style="font-size: 16px; color: #555; text-transform: uppercase;">${c.vice_name || '-'}</td>
+              <td style="text-align: center; font-size: 18px; font-weight: 900; color: #202683;">${c.candidate_number}</td>
+              <td style="font-size: 16px; font-weight: bold; text-transform: uppercase; color: #111;">${c.name}</td>
+              <td style="font-size: 14px; color: #555; text-transform: uppercase;">${c.vice_name || '-'}</td>
             </tr>
           `;
         });
@@ -266,19 +343,20 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         <head>
           <title>Cartaz Geral de Candidatos - CEEPS</title>
           <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
-            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 4px solid #dc2626; padding-bottom: 20px; }
-            h1 { margin: 0; font-size: 32px; text-transform: uppercase; color: #202683; }
-            h2 { margin: 5px 0 0 0; font-size: 20px; color: #444; font-weight: bold; text-transform: uppercase;}
-            .turma-section { margin-bottom: 40px; page-break-inside: avoid; }
-            .turma-title { background-color: #202683; color: white; padding: 12px 15px; font-size: 20px; font-weight: bold; text-transform: uppercase; border-radius: 6px 6px 0 0; }
-            .role-title { background-color: #f1f5f9; padding: 8px 15px; font-size: 16px; font-weight: bold; text-transform: uppercase; border-left: 5px solid #dc2626; margin-top: 15px; margin-bottom: 10px;}
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 2px solid #ccc; padding: 12px; text-align: left; }
-            th { background-color: #e2e8f0; font-size: 13px; text-transform: uppercase; color: #333; }
-            .rodape { text-align: center; font-size: 12px; color: #888; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #dc2626; padding-bottom: 10px; }
+            h1 { margin: 0; font-size: 24px; text-transform: uppercase; color: #202683; }
+            h2 { margin: 5px 0 0 0; font-size: 16px; color: #444; font-weight: bold; text-transform: uppercase;}
+            .turma-section { margin-bottom: 25px; page-break-inside: avoid; }
+            .turma-title { background-color: #202683; color: white; padding: 6px 12px; font-size: 16px; font-weight: bold; text-transform: uppercase; border-radius: 4px 4px 0 0; }
+            .role-title { background-color: #f1f5f9; padding: 6px 12px; font-size: 14px; font-weight: bold; text-transform: uppercase; border-left: 4px solid #dc2626; margin-top: 10px; margin-bottom: 5px;}
+            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+            th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+            th { background-color: #e2e8f0; font-size: 12px; text-transform: uppercase; color: #333; }
+            .rodape { text-align: center; font-size: 10px; color: #888; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px; }
             @media print { 
               @page { margin: 1cm; size: A4 portrait; } 
+              body { padding: 0; }
             }
           </style>
         </head>
@@ -323,6 +401,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
           {turmas.map(t => (
             <div key={t.id} onClick={() => { setSelectedTurma(t); cancelEditStudent(); }} className={`p-3 border rounded-lg flex justify-between items-center cursor-pointer transition-all ${selectedTurma?.id === t.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'hover:bg-slate-50'}`}>
               
+              {/* MODO DE EDIÇÃO DE NOME DA TURMA */}
               {editingTurmaId === t.id ? (
                 <div className="flex w-full gap-2 items-center" onClick={e => e.stopPropagation()}>
                   <input autoFocus type="text" className="flex-1 p-1 border rounded text-sm font-bold text-slate-800" value={editTurmaName} onChange={e => setEditTurmaName(e.target.value)} />
@@ -356,6 +435,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
               <h2 className="text-2xl font-black text-slate-800">Turma: <span className="text-blue-600">{selectedTurma.name}</span></h2>
               
               <div className="flex items-center gap-2">
+                <button onClick={printCandidatesList} className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors bg-slate-800 text-white hover:bg-slate-900 shadow-sm">
+                  <Printer className="w-4 h-4" /> Imprimir Turma
+                </button>
+
                 <label className={`flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors shadow-sm ${isImportingCSV ? 'bg-slate-200 text-slate-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
                   {isImportingCSV ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
                   {isImportingCSV ? "Lendo..." : "Importar Planilha CSV"}
