@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, User, PieChart
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -277,7 +277,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       <tr>
         <td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td>
         <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
-        <td><strong>${escapeHtml(v.voter_name)}</strong><br/><small>${escapeHtml(v.voter_document || "Sem doc")}</small></td>
+        <td><strong>${escapeHtml(v.voter_name)}</strong></td>
         <td style="text-align: center; font-weight: bold;">
           ${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}
           ${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
@@ -316,11 +316,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | 
             Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | 
             Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/>
-            Busca por nome/documento: ${filters.search || 'Nenhuma'}
+            Busca por nome: ${filters.search || 'Nenhuma'}
           </div>
           <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
           <table>
-            <thead><tr><th>Data/Hora</th><th>Turma</th><th>Eleitor / Documento</th><th>Voto Registrado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
           <div class="rodape">
@@ -454,15 +454,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                         result.candidateResults.map((cand, cIdx) => (
                           <div key={cand.id} className="relative">
                             <div className="flex items-center gap-4 mb-2">
-                              {/* Foto Redonda do Candidato */}
-                              <div className="w-12 h-12 rounded-full border-2 border-slate-200 overflow-hidden bg-slate-100 flex flex-shrink-0 items-center justify-center">
-                                {cand.photo_url ? (
-                                  <img src={cand.photo_url} alt={cand.name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <User className="w-6 h-6 text-slate-400" />
-                                )}
-                              </div>
-                              
                               <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-end mb-1">
                                   <p className="font-bold text-slate-800 truncate pr-2 flex items-center gap-1">
@@ -526,7 +517,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label>
                   <div className="relative">
                     <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                    <input type="text" placeholder="Nome ou Documento" className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
+                    <input type="text" placeholder="Nome" className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -579,7 +570,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                       <tr className="text-[10px] text-slate-500 uppercase">
                         <th className="p-4 font-black">Data/Hora</th>
                         <th className="p-4 font-black">Turma</th>
-                        <th className="p-4 font-black">Eleitor & Documento</th>
+                        <th className="p-4 font-black">Eleitor</th>
                         <th className="p-4 font-black text-center">Voto Computado</th>
                         <th className="p-4 font-black text-center">Ação</th>
                       </tr>
@@ -591,7 +582,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                           <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
                           <td className="p-4">
                             <p className="font-bold text-slate-900">{v.voter_name}</p>
-                            <p className="font-mono text-xs text-slate-400">{v.voter_document || "Pendente"}</p>
                           </td>
                           <td className="p-4 text-center">
                             {showVotes ? (
