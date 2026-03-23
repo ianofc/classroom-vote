@@ -1,13 +1,47 @@
 import { useState, useCallback, useEffect } from "react";
-import { UserCheck, ShieldCheck, Moon, Sun, Loader2 } from "lucide-react";
+import { UserCheck, ShieldCheck, Moon, Sun, Loader2, Maximize, Minimize } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+
+// ==================== MOTOR DE ÁUDIO DO TSE ====================
+const playUrnaSound = (type: 'key' | 'end') => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square'; // Tipo de onda clássica de dispositivos eletrónicos (retro)
+
+    if (type === 'key') {
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      gain.gain.setValueAtTime(0.05, ctx.currentTime); // Volume baixo para as teclas
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+      osc.stop(ctx.currentTime + 0.1);
+    } else if (type === 'end') {
+      osc.frequency.setValueAtTime(1000, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime); // Volume um pouco mais alto para o final
+      osc.start();
+      // O Piiii longo (1.2 segundos)
+      gain.gain.setValueAtTime(0.1, ctx.currentTime + 1.0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
+      osc.stop(ctx.currentTime + 1.2);
+    }
+  } catch (e) {
+    console.error("Áudio não suportado ou bloqueado", e);
+  }
+};
 
 const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
   const [step, setStep] = useState<'identificacao' | 'urna'>('identificacao');
   const [voterData, setVoterData] = useState({ name: "" }); 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [turmaStudents, setTurmaStudents] = useState<any[]>([]);
 
@@ -15,6 +49,11 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
     supabase.from('students').select('*').eq('turma_id', turma.id).then(({data}) => {
       if (data) setTurmaStudents(data);
     });
+
+    // Verificar se já está em ecrã inteiro (caso o utilizador saia com ESC)
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [turma.id]);
 
   const rolesAvailable = Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))) as string[];
@@ -38,6 +77,16 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
 
   const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        toast({ title: "Erro", description: "O seu navegador bloqueou o Ecrã Inteiro.", variant: "destructive" });
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
   const handleLiberarUrna = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voterData.name.trim()) {
@@ -57,7 +106,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
 
       if (error) {
         setIsAuthenticating(false);
-        toast({ title: "Erro de Cadastro", description: "Não foi possível registrar o aluno.", variant: "destructive" });
+        toast({ title: "Erro de Registo", description: "Não foi possível registar o aluno.", variant: "destructive" });
         return;
       }
     }
@@ -66,23 +115,44 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
     setStep('urna');
   };
 
+  // Funções da Urna com Som
   const handleDigit = useCallback((d: string) => {
     if (step !== 'urna' || showEndAnim) return;
-    if (digits.length < maxDigits) setDigits((prev) => prev + d);
+    if (digits.length < maxDigits) {
+      playUrnaSound('key');
+      setDigits((prev) => prev + d);
+    }
   }, [digits, step, showEndAnim]);
 
   const handleCorrect = useCallback(() => {
     if (step !== 'urna' || showEndAnim) return;
+    playUrnaSound('key');
     setDigits("");
   }, [step, showEndAnim]);
 
+  const handleBlank = useCallback(() => {
+    if (step !== 'urna' || showEndAnim) return;
+    playUrnaSound('key');
+    processVote({ role: currentRole, number: -1, type: "branco" });
+  }, [step, showEndAnim, currentRole, votesArray, currentRoleIndex, sequence]);
+
+  const handleConfirm = useCallback(() => {
+    if (step !== 'urna' || showEndAnim || digits.length < maxDigits) return;
+    processVote({ role: currentRole, number: parseInt(digits), type: candidate ? "candidate" : "nulo" });
+  }, [step, showEndAnim, digits, candidate, currentRole, votesArray, currentRoleIndex, sequence]);
+
   const processVote = (voteData: any) => {
     const newVotes = [...votesArray, voteData];
+    
+    // Se ainda há mais cargos para votar
     if (currentRoleIndex < sequence.length - 1) {
+      playUrnaSound('key'); // Bip curto de passagem
       setVotesArray(newVotes);
       setCurrentRoleIndex(currentRoleIndex + 1);
       setDigits("");
     } else {
+      // Se for o ÚLTIMO cargo, emite o Piiiiiii longo!
+      playUrnaSound('end');
       setShowEndAnim(true);
       setTimeout(() => {
         onVoteConfirmed(newVotes, voterData);
@@ -92,19 +162,9 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
         setDigits("");
         setStep('identificacao');
         setShowEndAnim(false);
-      }, 2000);
+      }, 2500);
     }
   };
-
-  const handleBlank = useCallback(() => {
-    if (step !== 'urna' || showEndAnim) return;
-    processVote({ role: currentRole, number: -1, type: "branco" });
-  }, [step, showEndAnim, currentRole, votesArray, currentRoleIndex, sequence]);
-
-  const handleConfirm = useCallback(() => {
-    if (step !== 'urna' || showEndAnim || digits.length < maxDigits) return;
-    processVote({ role: currentRole, number: parseInt(digits), type: candidate ? "candidate" : "nulo" });
-  }, [step, showEndAnim, digits, candidate, currentRole, votesArray, currentRoleIndex, sequence]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -126,7 +186,17 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
 
       {step === 'identificacao' ? (
         <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-2xl border-t-4 border-blue-600 relative z-10 animate-in fade-in zoom-in duration-500">
-          <div className="flex items-center gap-4 mb-6 border-b border-slate-200 dark:border-slate-700 pb-5">
+          
+          {/* BOTÃO ECRÃ INTEIRO NO TOPO DA JANELA DO MESÁRIO */}
+          <button 
+            onClick={toggleFullscreen} 
+            title="Ativar/Desativar Ecrã Inteiro"
+            className="absolute top-6 right-6 text-slate-400 hover:text-blue-600 transition-colors"
+          >
+            {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+          </button>
+
+          <div className="flex items-center gap-4 mb-6 border-b border-slate-200 dark:border-slate-700 pb-5 pt-2">
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
               <UserCheck className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
