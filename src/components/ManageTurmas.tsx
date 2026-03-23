@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Users, Upload, Loader2, CheckSquare, Square, FileUp, UserCheck } from "lucide-react";
+import { Plus, Trash2, Users, Upload, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Turma { id: string; name: string; }
@@ -17,10 +17,16 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Estados de Edição de Turma
   const [newTurmaName, setNewTurmaName] = useState("");
+  const [editingTurmaId, setEditingTurmaId] = useState<string | null>(null);
+  const [editTurmaName, setEditTurmaName] = useState("");
+
+  // Estados de Formulário de Aluno
   const [newStudent, setNewStudent] = useState<Partial<Student>>({ 
     name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] 
   });
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [vicePhotoFile, setVicePhotoFile] = useState<File | null>(null);
@@ -44,6 +50,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     setLoading(false);
   };
 
+  // ==================== GESTÃO DE TURMAS ====================
   const handleAddTurma = async () => {
     if (!newTurmaName.trim()) return;
     const { data, error } = await supabase.from('turmas').insert({ name: newTurmaName.trim() }).select().single();
@@ -56,24 +63,35 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     }
   };
 
+  const saveEditTurma = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!editTurmaName.trim()) return;
+    const { error } = await supabase.from('turmas').update({ name: editTurmaName.trim() }).eq('id', id);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      setTurmas(turmas.map(t => t.id === id ? { ...t, name: editTurmaName.trim() } : t));
+      if (selectedTurma?.id === id) setSelectedTurma({ ...selectedTurma, name: editTurmaName.trim() });
+      setEditingTurmaId(null);
+      onTurmasChanged();
+      toast({ title: "Sucesso", description: "Turma atualizada!" });
+    }
+  };
+
   const handleDeleteTurma = async (id: string) => {
     if (!confirm("Atenção! Isso apagará a turma, TODOS os alunos e TODOS OS VOTOS vinculados a ela. Continuar?")) return;
-    
-    // Força a exclusão em cascata limpando os votos e alunos primeiro
     await supabase.from('votes').delete().eq('turma_id', id);
     await supabase.from('students').delete().eq('turma_id', id);
     const { error } = await supabase.from('turmas').delete().eq('id', id);
-    
     if (!error) {
       setTurmas(turmas.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
       onTurmasChanged();
-      toast({ title: "Sucesso", description: "Turma e todos os dados excluídos." });
-    } else {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: "Sucesso", description: "Turma excluída." });
     }
   };
 
+  // ==================== GESTÃO DE ALUNOS E CANDIDATOS ====================
   const uploadPhoto = async (file: File): Promise<string | null> => {
     const fileExt = file.name.split('.').pop();
     const filePath = `fotos/${Math.random()}.${fileExt}`;
@@ -82,7 +100,30 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     return supabase.storage.from('candidatos-fotos').getPublicUrl(filePath).data.publicUrl;
   };
 
-  const handleAddStudent = async () => {
+  const startEditStudent = (s: Student) => {
+    setNewStudent({
+      name: s.name,
+      document: s.document || "",
+      contact: s.contact || "",
+      is_candidate: s.is_candidate,
+      candidate_role: s.candidate_role || ROLES[0],
+      candidate_number: s.candidate_number || undefined,
+      vice_name: s.vice_name || ""
+    });
+    setEditingStudentId(s.id);
+    setPhotoFile(null);
+    setVicePhotoFile(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Rola para o formulário
+  };
+
+  const cancelEditStudent = () => {
+    setNewStudent({ name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] });
+    setEditingStudentId(null);
+    setPhotoFile(null);
+    setVicePhotoFile(null);
+  };
+
+  const handleSaveStudent = async () => {
     if (!selectedTurma || !newStudent.name) {
       toast({ title: "Atenção", description: "O Nome do aluno é obrigatório.", variant: "destructive" });
       return;
@@ -93,14 +134,15 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     }
 
     setIsUploading(true);
-    let pUrl = null, vpUrl = null;
+    let pUrl = undefined;
+    let vpUrl = undefined;
     
     if (newStudent.is_candidate) {
       if (photoFile) pUrl = await uploadPhoto(photoFile);
       if (vicePhotoFile) vpUrl = await uploadPhoto(vicePhotoFile);
     }
 
-    const { data, error } = await supabase.from('students').insert({
+    const payload: any = {
       turma_id: selectedTurma.id, 
       name: newStudent.name.trim(), 
       document: newStudent.document?.trim() || null, 
@@ -109,27 +151,51 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
       candidate_role: newStudent.is_candidate ? newStudent.candidate_role : null,
       candidate_number: newStudent.is_candidate ? newStudent.candidate_number : null, 
       vice_name: newStudent.is_candidate ? newStudent.vice_name : null, 
-      photo_url: pUrl, 
-      vice_photo_url: vpUrl
-    }).select().single();
+    };
+
+    if (pUrl !== undefined) payload.photo_url = pUrl;
+    if (vpUrl !== undefined) payload.vice_photo_url = vpUrl;
+    // Se o usuário desmarcou a opção candidato, limpamos os dados de candidato
+    if (!newStudent.is_candidate) {
+      payload.photo_url = null;
+      payload.vice_photo_url = null;
+    }
+
+    let error, data;
+
+    if (editingStudentId) {
+      // Atualizar Aluno Existente
+      const res = await supabase.from('students').update(payload).eq('id', editingStudentId).select().single();
+      error = res.error; data = res.data;
+    } else {
+      // Inserir Novo Aluno
+      const res = await supabase.from('students').insert(payload).select().single();
+      error = res.error; data = res.data;
+    }
 
     setIsUploading(false);
 
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else {
-      setStudents([...students, data]);
-      setNewStudent({ name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] });
-      setPhotoFile(null); setVicePhotoFile(null);
-      toast({ title: "Sucesso", description: "Aluno cadastrado!" });
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      if (editingStudentId) {
+        setStudents(students.map(s => s.id === editingStudentId ? data : s));
+        toast({ title: "Sucesso", description: "Dados atualizados com sucesso!" });
+      } else {
+        setStudents([...students, data]);
+        toast({ title: "Sucesso", description: "Aluno cadastrado!" });
+      }
+      cancelEditStudent();
     }
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!confirm("Apagar aluno/candidato?")) return;
+    if (!confirm("Apagar aluno/candidato permanentemente?")) return;
     const { error } = await supabase.from('students').delete().eq('id', id);
     if (!error) setStudents(students.filter(s => s.id !== id));
   };
 
+  // ==================== IMPORTAÇÃO E IMPRESSÃO ====================
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedTurma) return;
@@ -149,7 +215,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
           is_candidate: false
         })).filter(s => s.name); 
 
-        if (newStudents.length === 0) throw new Error("Nenhum nome válido encontrado na primeira coluna.");
+        if (newStudents.length === 0) throw new Error("Nenhum nome válido encontrado.");
 
         const { data, error } = await supabase.from('students').insert(newStudents).select();
         if (error) throw error;
@@ -165,105 +231,223 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     reader.readAsText(file, 'UTF-8');
   };
 
+  const printCandidatesList = () => {
+    const candidates = students.filter(s => s.is_candidate);
+    if (candidates.length === 0) {
+      toast({ title: "Atenção", description: "Não há candidatos cadastrados para imprimir.", variant: "destructive" });
+      return;
+    }
+
+    // Agrupar por Cargo
+    const grouped: Record<string, Student[]> = {};
+    candidates.forEach(c => {
+      const role = c.candidate_role || "Líder Geral";
+      if (!grouped[role]) grouped[role] = [];
+      grouped[role].push(c);
+    });
+
+    let htmlContent = "";
+    Object.keys(grouped).sort().forEach(role => {
+      htmlContent += `<div class="role-title">${role}</div>`;
+      htmlContent += `<table><tr><th width="100">Nº da Chapa</th><th>Candidato (Titular)</th><th>Vice (Se houver)</th></tr>`;
+      
+      grouped[role].sort((a, b) => (a.candidate_number || 0) - (b.candidate_number || 0)).forEach(c => {
+        htmlContent += `
+          <tr>
+            <td style="text-align: center; font-size: 28px; font-weight: 900; color: #202683;">${c.candidate_number}</td>
+            <td style="font-size: 20px; font-weight: bold; text-transform: uppercase;">${c.name}</td>
+            <td style="font-size: 16px; color: #555; text-transform: uppercase;">${c.vice_name || '-'}</td>
+          </tr>
+        `;
+      });
+      htmlContent += `</table>`;
+    });
+
+    const printHtml = `
+      <html>
+        <head>
+          <title>Candidatos - ${selectedTurma?.name}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #202683; padding-bottom: 20px; }
+            h1 { margin: 0; font-size: 32px; text-transform: uppercase; color: #202683; }
+            h2 { margin: 5px 0 0 0; font-size: 24px; color: #444; }
+            .role-title { background-color: #f1f5f9; padding: 10px 15px; font-size: 20px; font-weight: bold; text-transform: uppercase; border-left: 5px solid #202683; margin-top: 30px; margin-bottom: 10px;}
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+            th, td { border: 2px solid #ddd; padding: 15px; text-align: left; }
+            th { background-color: #e2e8f0; font-size: 14px; text-transform: uppercase; color: #555; }
+            .rodape { text-align: center; font-size: 12px; color: #888; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; }
+            @media print { @page { margin: 1cm; size: A4 portrait; } }
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho">
+            <h1>Eleições CEEPS 2026</h1>
+            <h2>Candidatos - ${selectedTurma?.name}</h2>
+          </div>
+          ${htmlContent}
+          <div class="rodape">Documento Oficial - Cole na porta da sala de votação.</div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* COLUNA ESQUERDA: TURMAS */}
+      {/* ======================= COLUNA ESQUERDA: TURMAS ======================= */}
       <div className="lg:col-span-1 space-y-4 border-r border-slate-200 pr-4">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="w-5 h-5 text-blue-600" /> Turmas</h3>
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="w-5 h-5 text-blue-600" /> Turmas Cadastradas</h3>
         <div className="flex gap-2">
-          <input type="text" placeholder="Nova Turma" className="flex-1 p-2 border rounded-md text-sm" value={newTurmaName} onChange={e => setNewTurmaName(e.target.value)} />
-          <button onClick={handleAddTurma} className="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700"><Plus className="w-4 h-4" /></button>
+          <input type="text" placeholder="Nova Turma" className="flex-1 p-2 border rounded-md text-sm outline-none focus:border-blue-500" value={newTurmaName} onChange={e => setNewTurmaName(e.target.value)} />
+          <button onClick={handleAddTurma} className="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition-colors"><Plus className="w-4 h-4" /></button>
         </div>
-        <div className="space-y-2 mt-4 max-h-[400px] overflow-y-auto">
+        <div className="space-y-2 mt-4 max-h-[500px] overflow-y-auto custom-scrollbar">
           {turmas.map(t => (
-            <div key={t.id} onClick={() => setSelectedTurma(t)} className={`p-3 border rounded-lg flex justify-between items-center cursor-pointer ${selectedTurma?.id === t.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-slate-50'}`}>
-              <span className="font-semibold text-sm text-slate-700">{t.name}</span>
-              <button onClick={(e) => { e.stopPropagation(); handleDeleteTurma(t.id); }} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+            <div key={t.id} onClick={() => { setSelectedTurma(t); cancelEditStudent(); }} className={`p-3 border rounded-lg flex justify-between items-center cursor-pointer transition-all ${selectedTurma?.id === t.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'hover:bg-slate-50'}`}>
+              
+              {/* MODO DE EDIÇÃO DE NOME DA TURMA */}
+              {editingTurmaId === t.id ? (
+                <div className="flex w-full gap-2 items-center" onClick={e => e.stopPropagation()}>
+                  <input autoFocus type="text" className="flex-1 p-1 border rounded text-sm font-bold text-slate-800" value={editTurmaName} onChange={e => setEditTurmaName(e.target.value)} />
+                  <button onClick={(e) => saveEditTurma(t.id, e)} className="text-green-600 hover:bg-green-100 p-1 rounded"><Save className="w-4 h-4" /></button>
+                  <button onClick={(e) => { e.stopPropagation(); setEditingTurmaId(null); }} className="text-slate-400 hover:bg-slate-200 p-1 rounded"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <>
+                  <span className="font-bold text-sm text-slate-700">{t.name}</span>
+                  <div className="flex gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); setEditingTurmaId(t.id); setEditTurmaName(t.name); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-md transition-colors"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteTurma(t.id); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-md transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* COLUNA DIREITA: ALUNOS E CANDIDATOS */}
+      {/* ======================= COLUNA DIREITA: ALUNOS E CANDIDATOS ======================= */}
       <div className="lg:col-span-2 space-y-6">
         {!selectedTurma ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl p-10">
-            <Users className="w-12 h-12 mb-2 opacity-50" />
-            <p>Selecione uma turma para gerenciar alunos e importar lista.</p>
+          <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl p-10 bg-slate-50/50">
+            <Users className="w-12 h-12 mb-4 opacity-30" />
+            <p className="font-medium text-center">Selecione uma turma ao lado para gerenciar <br/>alunos, editar chapas ou importar listas.</p>
           </div>
         ) : (
           <>
-            <div className="flex justify-between items-center border-b pb-2 mb-4">
-              <h2 className="text-xl font-black text-slate-800">Turma: <span className="text-blue-600">{selectedTurma.name}</span></h2>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4 mb-4">
+              <h2 className="text-2xl font-black text-slate-800">Turma: <span className="text-blue-600">{selectedTurma.name}</span></h2>
               
-              <label className={`flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors ${isImportingCSV ? 'bg-slate-200 text-slate-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                {isImportingCSV ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
-                {isImportingCSV ? "Importando..." : "Importar CSV"}
-                <input type="file" accept=".csv" className="hidden" onChange={handleCSVImport} disabled={isImportingCSV} />
-              </label>
+              <div className="flex items-center gap-2">
+                <button onClick={printCandidatesList} className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors bg-slate-800 text-white hover:bg-slate-900 shadow-sm">
+                  <Printer className="w-4 h-4" /> Cartaz (PDF)
+                </button>
+
+                <label className={`flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors shadow-sm ${isImportingCSV ? 'bg-slate-200 text-slate-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                  {isImportingCSV ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
+                  {isImportingCSV ? "Lendo..." : "Importar CSV"}
+                  <input type="file" accept=".csv" className="hidden" onChange={handleCSVImport} disabled={isImportingCSV} />
+                </label>
+              </div>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-              <h4 className="text-sm font-bold text-slate-700">Cadastrar Manualmente</h4>
+            {/* FORMULÁRIO DE CADASTRO / EDIÇÃO */}
+            <div className={`p-5 rounded-xl border-2 transition-colors ${editingStudentId ? 'bg-blue-50/50 border-blue-300' : 'bg-slate-50 border-slate-200'} space-y-4 shadow-sm`}>
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  {editingStudentId ? <><Pencil className="w-4 h-4 text-blue-600"/> Editando Cadastro</> : "Cadastrar Manualmente"}
+                </h4>
+                {editingStudentId && (
+                  <button onClick={cancelEditStudent} className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1"><X className="w-3 h-3"/> Cancelar Edição</button>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" placeholder="Nome Completo do Aluno *" className="w-full p-2 border rounded-md text-sm" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} />
-                <input type="text" placeholder="Documento (Opcional agora)" className="w-full p-2 border rounded-md text-sm" value={newStudent.document || ''} onChange={e => setNewStudent({...newStudent, document: e.target.value})} />
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Nome Completo *</label>
+                  <input type="text" placeholder="Nome do Aluno" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Documento / Fone (Opcional)</label>
+                  <input type="text" placeholder="RG, CPF ou Telefone" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500" value={newStudent.document || ''} onChange={e => setNewStudent({...newStudent, document: e.target.value})} />
+                </div>
               </div>
               
-              <div className="pt-2 border-t border-slate-200">
-                <button onClick={() => setNewStudent({...newStudent, is_candidate: !newStudent.is_candidate})} className={`flex items-center gap-2 text-sm font-bold p-2 rounded-md ${newStudent.is_candidate ? 'text-blue-700 bg-blue-100' : 'text-slate-500 hover:bg-slate-200'}`}>
-                  {newStudent.is_candidate ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />} ESTE ALUNO É CANDIDATO A UMA CHAPA
+              <div className="pt-2 border-t border-slate-200/50">
+                <button onClick={() => setNewStudent({...newStudent, is_candidate: !newStudent.is_candidate})} className={`flex items-center gap-2 text-sm font-bold p-3 rounded-lg w-full transition-colors ${newStudent.is_candidate ? 'text-blue-800 bg-blue-100 border border-blue-200' : 'text-slate-600 bg-white border border-slate-200 hover:bg-slate-100'}`}>
+                  {newStudent.is_candidate ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />} 
+                  ESTE ALUNO É CANDIDATO (CHAPA)
                 </button>
               </div>
 
               {newStudent.is_candidate && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-xs font-bold text-slate-600 uppercase">A qual cargo esta chapa concorre?</label>
-                    <select className="w-full p-2 border rounded-md text-sm font-bold text-slate-800 bg-white" value={newStudent.candidate_role} onChange={e => setNewStudent({...newStudent, candidate_role: e.target.value})}>
+                    <select className="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-bold text-slate-800 bg-slate-50 outline-none focus:border-blue-500" value={newStudent.candidate_role} onChange={e => setNewStudent({...newStudent, candidate_role: e.target.value})}>
                       {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-600 uppercase">Número na Urna</label>
-                    <input type="number" placeholder="Ex: 10" className="w-full p-2 border rounded-md text-sm" value={newStudent.candidate_number || ''} onChange={e => setNewStudent({...newStudent, candidate_number: parseInt(e.target.value)})} />
+                    <label className="text-xs font-bold text-slate-600 uppercase text-blue-600">Número da Urna *</label>
+                    <input type="number" placeholder="Ex: 10" className="w-full p-2.5 border-2 border-blue-200 rounded-lg text-lg font-black text-center text-blue-800 outline-none focus:border-blue-500" value={newStudent.candidate_number || ''} onChange={e => setNewStudent({...newStudent, candidate_number: parseInt(e.target.value)})} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-600 uppercase">Nome do Vice (Opcional)</label>
-                    <input type="text" placeholder="Nome do companheiro de chapa" className="w-full p-2 border rounded-md text-sm" value={newStudent.vice_name || ''} onChange={e => setNewStudent({...newStudent, vice_name: e.target.value})} />
+                    <input type="text" placeholder="Nome do companheiro de chapa" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 mt-0.5" value={newStudent.vice_name || ''} onChange={e => setNewStudent({...newStudent, vice_name: e.target.value})} />
                   </div>
-                  <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                    <label className="cursor-pointer bg-white border border-dashed border-slate-300 p-3 flex flex-col items-center justify-center text-xs text-slate-500 rounded-md hover:border-blue-500">
-                      <Upload className="w-4 h-4 mb-1 text-blue-500" /> {photoFile ? <span className="text-green-600 font-bold">Foto Titular OK</span> : "Foto Titular"}
+                  <div className="md:col-span-2 grid grid-cols-2 gap-4 pt-2">
+                    <label className="cursor-pointer bg-slate-50 border border-dashed border-slate-300 p-4 flex flex-col items-center justify-center text-xs font-bold text-slate-500 rounded-xl hover:border-blue-500 transition-colors">
+                      <Upload className="w-5 h-5 mb-2 text-blue-500" /> 
+                      {photoFile ? <span className="text-green-600">Nova Foto Titular OK</span> : (editingStudentId ? "Atualizar Foto Titular" : "Anexar Foto Titular")}
                       <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files && setPhotoFile(e.target.files[0])} />
                     </label>
-                    <label className="cursor-pointer bg-white border border-dashed border-slate-300 p-3 flex flex-col items-center justify-center text-xs text-slate-500 rounded-md hover:border-blue-500">
-                      <Upload className="w-4 h-4 mb-1 text-slate-400" /> {vicePhotoFile ? <span className="text-green-600 font-bold">Foto Vice OK</span> : "Foto Vice"}
+                    <label className="cursor-pointer bg-slate-50 border border-dashed border-slate-300 p-4 flex flex-col items-center justify-center text-xs font-bold text-slate-500 rounded-xl hover:border-blue-500 transition-colors">
+                      <Upload className="w-5 h-5 mb-2 text-slate-400" /> 
+                      {vicePhotoFile ? <span className="text-green-600">Nova Foto Vice OK</span> : (editingStudentId ? "Atualizar Foto Vice" : "Anexar Foto Vice")}
                       <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files && setVicePhotoFile(e.target.files[0])} />
                     </label>
                   </div>
                 </div>
               )}
-              <button onClick={handleAddStudent} disabled={isUploading} className="w-full bg-slate-800 text-white font-bold py-3 rounded-lg flex justify-center gap-2 hover:bg-slate-900 disabled:opacity-50">
-                {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />} Salvar Aluno
+              <button onClick={handleSaveStudent} disabled={isUploading} className={`w-full text-white font-black uppercase tracking-widest py-3.5 rounded-xl flex justify-center gap-2 transition-all shadow-md disabled:opacity-50 ${editingStudentId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-800 hover:bg-slate-900'}`}>
+                {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingStudentId ? <Save className="w-5 h-5" /> : <Plus className="w-5 h-5" />)} 
+                {isUploading ? "Salvando..." : (editingStudentId ? "Atualizar Cadastro" : "Salvar Aluno")}
               </button>
             </div>
 
-            <div className="space-y-2 mt-6 max-h-[300px] overflow-y-auto">
+            {/* LISTA DE ALUNOS CADASTRADOS */}
+            <div className="space-y-2 mt-8 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-3 px-1">Lista da Turma ({students.length})</h3>
               {students.map(s => (
-                <div key={s.id} className="p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm">
+                <div key={s.id} className="p-4 border border-slate-200 rounded-xl flex justify-between items-center bg-white shadow-sm hover:border-slate-300 transition-colors">
                   <div>
-                    <p className="font-bold text-slate-800 text-sm">{s.name}</p>
-                    <p className="text-xs text-slate-500">Doc: {s.document || "Pendente"}</p>
+                    <p className="font-bold text-slate-800 text-sm md:text-base leading-tight">{s.name}</p>
+                    <p className="text-xs text-slate-500 mb-1">Doc: {s.document || "Pendente"}</p>
                     {s.is_candidate && (
-                      <span className="inline-flex items-center mt-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        <UserCheck className="w-3 h-3 mr-1" /> {s.candidate_role} (Nº {s.candidate_number})
+                      <span className="inline-flex items-center bg-blue-100/80 border border-blue-200 text-blue-800 text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-md uppercase">
+                        <UserCheck className="w-3 h-3 mr-1.5" /> {s.candidate_role} (Nº {s.candidate_number})
                       </span>
                     )}
                   </div>
-                  <button onClick={() => handleDeleteStudent(s.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex gap-2">
+                    <button onClick={() => startEditStudent(s)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar Cadastro">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeleteStudent(s.id)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Excluir Aluno">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
+              {students.length === 0 && <p className="text-sm text-slate-400 text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">Nenhum aluno nesta turma. Adicione ou importe um CSV.</p>}
             </div>
           </>
         )}
