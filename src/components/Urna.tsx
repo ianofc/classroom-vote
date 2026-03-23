@@ -3,9 +3,9 @@ import { UserCheck, ShieldCheck, Moon, Sun, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 
-const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any) => {
+const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
   const [step, setStep] = useState<'identificacao' | 'urna'>('identificacao');
-  const [voterData, setVoterData] = useState({ name: "", document: "", contact: "" });
+  const [voterData, setVoterData] = useState({ name: "" }); // Agora só pede o nome
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
@@ -38,64 +38,33 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
 
   const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-  // ----- VALIDAÇÃO E AUTO-CADASTRO DO ALUNO -----
+  // ----- VALIDAÇÃO DO NOME DO ALUNO -----
   const handleLiberarUrna = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!voterData.name || !voterData.document || !voterData.contact) {
-      toast({ title: "Atenção", description: "Preencha todos os campos para votar.", variant: "destructive" });
+    if (!voterData.name.trim()) {
+      toast({ title: "Atenção", description: "Preencha o nome para votar.", variant: "destructive" });
       return;
     }
 
     setIsAuthenticating(true);
-
     const nameTrimmed = voterData.name.trim();
-    const docTrimmed = voterData.document.trim();
-    const contactTrimmed = voterData.contact.trim();
 
-    // 1. Procura se o aluno já existe na turma (pelo nome ou documento)
-    const studentEncontrado = turmaStudents.find(s => 
-      normalize(s.name) === normalize(nameTrimmed) || 
-      (s.document && s.document === docTrimmed)
-    );
+    const studentEncontrado = turmaStudents.find(s => normalize(s.name) === normalize(nameTrimmed));
 
-    if (studentEncontrado) {
-      // Se já existe (ex: é um candidato pré-cadastrado), atualiza o RG e Contato
+    if (!studentEncontrado) {
+      // Se não estiver na lista de alunos prévia, auto-cadastra ele para ter o controle do nome na auditoria
       const { error } = await supabase
         .from('students')
-        .update({ document: docTrimmed, contact: contactTrimmed })
-        .eq('id', studentEncontrado.id);
+        .insert({ turma_id: turma.id, name: nameTrimmed, is_candidate: false });
 
       if (error) {
         setIsAuthenticating(false);
-        toast({ title: "Erro", description: "Falha ao atualizar dados.", variant: "destructive" });
-        return;
-      }
-    } else {
-      // Se NÃO existe, auto-cadastra o aluno nesta turma e deixa ele votar
-      const { error } = await supabase
-        .from('students')
-        .insert({
-          turma_id: turma.id,
-          name: nameTrimmed,
-          document: docTrimmed,
-          contact: contactTrimmed,
-          is_candidate: false // É apenas eleitor
-        });
-
-      if (error) {
-        setIsAuthenticating(false);
-        // Se der erro de unicidade (código 23505), significa que o RG já votou/foi cadastrado em outra turma
-        if (error.code === '23505' || error.message.includes('unique')) {
-          toast({ title: "Documento Inválido", description: "Este documento já está registrado em outra turma.", variant: "destructive" });
-        } else {
-          toast({ title: "Erro de Cadastro", description: "Não foi possível registrar o aluno.", variant: "destructive" });
-        }
+        toast({ title: "Erro de Cadastro", description: "Não foi possível registrar o aluno.", variant: "destructive" });
         return;
       }
     }
 
     setIsAuthenticating(false);
-    // 3. Libera a Urna
     setStep('urna');
   };
 
@@ -119,7 +88,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
       setShowEndAnim(true);
       setTimeout(() => {
         onVoteConfirmed(newVotes, voterData);
-        setVoterData({ name: "", document: "", contact: "" });
+        setVoterData({ name: "" });
         setVotesArray([]);
         setCurrentRoleIndex(0);
         setDigits("");
@@ -164,49 +133,29 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
               <UserCheck className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Identificação do Aluno</h2>
+              <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Mesa Receptora</h2>
               <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1">Turma: {turma.name}</p>
             </div>
           </div>
           
           <form onSubmit={handleLiberarUrna} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Seu Nome Completo</label>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Nome do Eleitor</label>
               <input 
                 required autoFocus 
-                className="w-full p-3.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" 
+                className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-lg" 
                 value={voterData.name} 
-                onChange={e => setVoterData({...voterData, name: e.target.value})} 
-                placeholder="Conforme lista da escola"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Seu Documento (RG ou CPF)</label>
-              <input 
-                required 
-                className="w-full p-3.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium tracking-wide" 
-                value={voterData.document} 
-                onChange={e => setVoterData({...voterData, document: e.target.value})} 
-                placeholder="Apenas números"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">Contato (Telefone/WhatsApp)</label>
-              <input 
-                required
-                className="w-full p-3.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium tracking-wide" 
-                value={voterData.contact} 
-                onChange={e => setVoterData({...voterData, contact: e.target.value})} 
-                placeholder="(75) 90000-0000"
+                onChange={e => setVoterData({ name: e.target.value })} 
+                placeholder="Ex: Ana Souza"
               />
             </div>
             
             <button type="submit" disabled={isAuthenticating} className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest py-4 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg disabled:opacity-50">
               {isAuthenticating ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />} 
-              {isAuthenticating ? "Validando..." : "Acessar Urna"}
+              {isAuthenticating ? "Validando..." : "Liberar Urna"}
             </button>
             <button type="button" onClick={onBack} className="w-full py-3 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest mt-2 transition-colors">
-              Cancelar Eleição
+              Encerrar e Voltar
             </button>
           </form>
         </div>
@@ -238,7 +187,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack, voterNumber, totalVoters }: any)
 
                     {digits.length === maxDigits && candidate ? (
                       <div className="flex flex-col gap-3 pl-6 border-l-4 border-slate-300 animate-in fade-in slide-in-from-left-4 duration-300">
-                        {/* FOTOS LADO A LADO */}
                         <div className="flex items-end gap-4 mb-2">
                           <div className="w-[120px] h-[160px] border-2 border-slate-800 bg-white flex flex-col shadow-md rounded-sm overflow-hidden">
                             {candidate.photo_url ? <img src={candidate.photo_url} className="w-full flex-1 object-cover" alt="Titular" /> : <div className="flex-1 flex items-center justify-center text-xs text-slate-400 font-bold bg-slate-100">Sem Foto</div>}
