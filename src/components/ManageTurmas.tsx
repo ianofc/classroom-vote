@@ -9,7 +9,15 @@ interface Student {
   is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string;
 }
 
-const ROLES = ["Líder Geral", "Líder Quilombola", "Líder Rural", "Líder LGBTQIA+", "Líder Indígena"];
+// LISTA DE CARGOS ATUALIZADA
+const ROLES = [
+  "Líder Geral", 
+  "Líder Quilombola", 
+  "Líder do Campo", 
+  "Líder LGBTQIA+", 
+  "Líder Indígena",
+  "Líder PCD"
+];
 
 const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
