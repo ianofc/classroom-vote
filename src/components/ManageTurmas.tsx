@@ -9,7 +9,7 @@ interface Student {
   is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string;
 }
 
-// Lista de Cargos Atualizada
+// ==================== LISTA DE CARGOS CORRIGIDA ====================
 const ROLES = [
   "Líder Geral", 
   "Líder Quilombola", 
@@ -206,7 +206,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const printAllCandidatesList = async () => {
     setIsPrinting(true);
     
-    // Busca TODOS os candidatos do banco de dados
     const { data: allCandidates, error } = await supabase
       .from('students')
       .select('*')
@@ -220,7 +219,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
       return;
     }
 
-    // Agrupa candidatos por ID de Turma
     const groupedByTurma: Record<string, Student[]> = {};
     allCandidates.forEach(c => {
       if (!groupedByTurma[c.turma_id]) groupedByTurma[c.turma_id] = [];
@@ -229,17 +227,15 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
 
     let htmlContent = "";
 
-    // Mapeia e organiza os dados em ordem alfabética das turmas
     const sortedTurmas = [...turmas].sort((a, b) => a.name.localeCompare(b.name));
     
     sortedTurmas.forEach(turma => {
       const candidatesInTurma = groupedByTurma[turma.id];
-      if (!candidatesInTurma || candidatesInTurma.length === 0) return; // Ignora turmas sem chapa
+      if (!candidatesInTurma || candidatesInTurma.length === 0) return; 
 
       htmlContent += `<div class="turma-section">`;
       htmlContent += `<div class="turma-title">TURMA: ${turma.name}</div>`;
 
-      // Agrupa por Cargo dentro da Turma
       const groupedByRole: Record<string, Student[]> = {};
       candidatesInTurma.forEach(c => {
         const role = c.candidate_role || "Líder Geral";
@@ -314,7 +310,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
       <div className="lg:col-span-1 space-y-4 border-r border-slate-200 pr-4">
         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="w-5 h-5 text-blue-600" /> Turmas Cadastradas</h3>
         
-        {/* BOTÃO GLOBAL DE IMPRIMIR CARTAZ */}
         <button onClick={printAllCandidatesList} disabled={isPrinting} className="w-full bg-slate-800 text-white p-3 rounded-lg hover:bg-slate-900 transition-colors flex justify-center items-center gap-2 text-sm font-bold shadow-md mb-2 disabled:opacity-50">
           {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} 
           {isPrinting ? "Gerando PDF..." : "Imprimir Cartaz Geral"}
@@ -328,7 +323,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
           {turmas.map(t => (
             <div key={t.id} onClick={() => { setSelectedTurma(t); cancelEditStudent(); }} className={`p-3 border rounded-lg flex justify-between items-center cursor-pointer transition-all ${selectedTurma?.id === t.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'hover:bg-slate-50'}`}>
               
-              {/* MODO DE EDIÇÃO DE NOME DA TURMA */}
               {editingTurmaId === t.id ? (
                 <div className="flex w-full gap-2 items-center" onClick={e => e.stopPropagation()}>
                   <input autoFocus type="text" className="flex-1 p-1 border rounded text-sm font-bold text-slate-800" value={editTurmaName} onChange={e => setEditTurmaName(e.target.value)} />
