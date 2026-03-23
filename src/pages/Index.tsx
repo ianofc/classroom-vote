@@ -12,19 +12,16 @@ type Phase = "welcome" | "select" | "setup" | "voting" | "admin";
 const Index = () => {
   const [phase, setPhase] = useState<Phase>("welcome");
   const [turma, setTurma] = useState<any | null>(null);
-  const [totalVoters, setTotalVoters] = useState(10);
   const [currentVoter, setCurrentVoter] = useState(1);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Controle de Tema Global
   useEffect(() => {
     if (isDarkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  // Transição da Tela de Boas-Vindas para a Seleção de Turmas
   useEffect(() => {
     if (phase === "welcome") {
       const timer = setTimeout(() => setPhase("select"), 3500);
@@ -51,33 +48,20 @@ const Index = () => {
       session_id: currentSessionId,
       turma_id: turma.id,
       voter_name: voterData.name,
-      voter_document: voterData.document,
-      voter_contact: voterData.contact,
       candidate_role: vote.role,
       candidate_number: vote.number,
       vote_type: vote.type
     }));
     
-    // Tenta salvar os votos no banco
     const { error } = await supabase.from('votes').insert(rowsToInsert);
 
-    // SE DER MERDA, AVISA E TRAVA!
     if (error) {
-      toast({ 
-        title: "Erro grave ao salvar o voto!", 
-        description: error.message, 
-        variant: "destructive" 
-      });
-      return; // Interrompe a função, não avança a urna
+      toast({ title: "Erro grave ao salvar o voto!", description: error.message, variant: "destructive" });
+      return; 
     }
 
-    // Se deu tudo certo, avança para o próximo
-    if (currentVoter >= totalVoters) {
-      toast({ title: "Fim", description: "Todos os eleitores desta sessão votaram." });
-      setPhase("select");
-    } else {
-      setCurrentVoter((v) => v + 1);
-    }
+    setCurrentVoter((v) => v + 1);
+    toast({ title: "Voto Computado", description: "O eleitor finalizou a votação." });
   };
 
   const handleOpenAdmin = async () => {
@@ -93,8 +77,6 @@ const Index = () => {
 
   return (
     <div className="bg-aurora flex flex-col items-center justify-center min-h-screen relative">
-      
-      {/* Botão Global de Tema Claro/Escuro */}
       <button 
         onClick={() => setIsDarkMode(!isDarkMode)} 
         className="fixed top-6 right-6 p-3 rounded-full glass-panel text-slate-700 dark:text-slate-200 hover:scale-105 transition-transform z-50 flex items-center justify-center"
@@ -102,7 +84,6 @@ const Index = () => {
         {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
       </button>
 
-      {/* FASE 1: BOAS VINDAS */}
       {phase === "welcome" && (
         <div className="glass-panel p-12 rounded-3xl flex flex-col items-center max-w-lg w-[90%] text-center animate-in fade-in zoom-in duration-1000">
           <div className="w-20 h-20 loader-ceeps mb-8"></div>
@@ -114,14 +95,12 @@ const Index = () => {
         </div>
       )}
 
-      {/* FASE 2: SELEÇÃO DE TURMAS */}
       {phase === "select" && (
         <div className="w-full h-full animate-in fade-in duration-700">
           <TurmaSelection onSelect={handleSelectTurma} onAdmin={handleOpenAdmin} />
         </div>
       )}
 
-      {/* FASE 3: CONFIGURAÇÃO DA SESSÃO */}
       {phase === "setup" && turma && (
         <div className="w-[90%] max-w-sm glass-panel rounded-3xl p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
           {loadingCandidates ? (
@@ -129,38 +108,31 @@ const Index = () => {
           ) : (
             <div className="space-y-6">
               <h1 className="text-2xl font-black uppercase text-blue-600 dark:text-blue-400 border-b border-slate-200 dark:border-slate-700 pb-4">{turma.name}</h1>
-              <div className="text-left space-y-2">
+              <div className="text-left space-y-2 mb-6">
                 <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Cargos em Disputa:</p>
                 {Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))).map((role: any) => (
                   <span key={role} className="inline-block bg-blue-100/80 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 text-xs font-bold px-2 py-1 rounded mr-2 mb-2">{role}</span>
                 ))}
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-2">Qtd. de Eleitores Hoje</label>
-                <input type="number" min={1} value={totalVoters} onChange={(e) => setTotalVoters(Math.max(1, parseInt(e.target.value) || 1))} className="w-full h-12 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-600 px-4 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-              </div>
-              <button onClick={handleStartVoting} className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest transition-all shadow-lg hover:shadow-blue-500/30">Iniciar Urna</button>
+              <button onClick={handleStartVoting} className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest transition-all shadow-lg hover:shadow-blue-500/30">Abrir Urna Agora</button>
               <button onClick={() => setPhase("select")} className="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest">Cancelar</button>
             </div>
           )}
         </div>
       )}
 
-      {/* FASE 4: URNA ELETRÔNICA */}
       {phase === "voting" && turma && (
         <div className="w-full animate-in fade-in duration-500">
-          <Urna turma={turma} onVoteConfirmed={handleVote} onBack={() => setPhase("select")} voterNumber={currentVoter} totalVoters={totalVoters} />
+          <Urna turma={turma} onVoteConfirmed={handleVote} onBack={() => setPhase("select")} />
           <button onClick={handleOpenAdmin} className="fixed bottom-6 right-6 w-12 h-12 rounded-full glass-panel flex items-center justify-center transition-all hover:scale-110 z-50 text-slate-500 dark:text-slate-400"><ShieldCheck className="w-5 h-5" /></button>
         </div>
       )}
 
-      {/* FASE 5: PAINEL ADMINISTRATIVO */}
       {phase === "admin" && (
         <div className="w-full animate-in fade-in duration-500 z-10 relative">
-          <AdminPanel turma={turma} totalVoters={totalVoters} currentVoter={currentVoter} votingComplete={false} onBack={() => setPhase("select")} onTurmasChanged={() => {}} sessionId={currentSessionId} />
+          <AdminPanel turma={turma} onBack={() => setPhase("select")} onTurmasChanged={() => {}} sessionId={currentSessionId} />
         </div>
       )}
-
     </div>
   );
 };
