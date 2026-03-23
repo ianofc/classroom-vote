@@ -14,19 +14,18 @@ const playUrnaSound = (type: 'key' | 'end') => {
 
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.type = 'square'; // Tipo de onda clássica de dispositivos eletrónicos (retro)
+    osc.type = 'square'; 
 
     if (type === 'key') {
       osc.frequency.setValueAtTime(800, ctx.currentTime);
-      gain.gain.setValueAtTime(0.05, ctx.currentTime); // Volume baixo para as teclas
+      gain.gain.setValueAtTime(0.05, ctx.currentTime); 
       osc.start();
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
       osc.stop(ctx.currentTime + 0.1);
     } else if (type === 'end') {
       osc.frequency.setValueAtTime(1000, ctx.currentTime);
-      gain.gain.setValueAtTime(0.1, ctx.currentTime); // Volume um pouco mais alto para o final
+      gain.gain.setValueAtTime(0.1, ctx.currentTime); 
       osc.start();
-      // O Piiii longo (1.2 segundos)
       gain.gain.setValueAtTime(0.1, ctx.currentTime + 1.0);
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
       osc.stop(ctx.currentTime + 1.2);
@@ -50,21 +49,23 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
       if (data) setTurmaStudents(data);
     });
 
-    // Verificar se já está em ecrã inteiro (caso o utilizador saia com ESC)
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [turma.id]);
 
   const rolesAvailable = Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))) as string[];
-  const sequence = rolesAvailable.length > 0 ? rolesAvailable : ['Geral'];
+  const sequence = rolesAvailable.length > 0 ? rolesAvailable : ['Líder Geral'];
   const [currentRoleIndex, setCurrentRoleIndex] = useState(0);
   const [votesArray, setVotesArray] = useState<any[]>([]);
 
   const [digits, setDigits] = useState("");
   const [showEndAnim, setShowEndAnim] = useState(false);
   const currentRole = sequence[currentRoleIndex];
-  const maxDigits = 2;
+  
+  // ==================== REGRA DOS DÍGITOS ====================
+  // Se for Líder Geral são 2 dígitos (dezena), os restantes são 3 (centena)
+  const maxDigits = currentRole === 'Líder Geral' ? 2 : 3;
 
   const candidate = digits.length === maxDigits
     ? turma.candidates.find((c: any) => c.candidate_number === parseInt(digits) && c.candidate_role === currentRole)
@@ -115,14 +116,13 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
     setStep('urna');
   };
 
-  // Funções da Urna com Som
   const handleDigit = useCallback((d: string) => {
     if (step !== 'urna' || showEndAnim) return;
     if (digits.length < maxDigits) {
       playUrnaSound('key');
       setDigits((prev) => prev + d);
     }
-  }, [digits, step, showEndAnim]);
+  }, [digits, step, showEndAnim, maxDigits]);
 
   const handleCorrect = useCallback(() => {
     if (step !== 'urna' || showEndAnim) return;
@@ -130,28 +130,15 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
     setDigits("");
   }, [step, showEndAnim]);
 
-  const handleBlank = useCallback(() => {
-    if (step !== 'urna' || showEndAnim) return;
-    playUrnaSound('key');
-    processVote({ role: currentRole, number: -1, type: "branco" });
-  }, [step, showEndAnim, currentRole, votesArray, currentRoleIndex, sequence]);
-
-  const handleConfirm = useCallback(() => {
-    if (step !== 'urna' || showEndAnim || digits.length < maxDigits) return;
-    processVote({ role: currentRole, number: parseInt(digits), type: candidate ? "candidate" : "nulo" });
-  }, [step, showEndAnim, digits, candidate, currentRole, votesArray, currentRoleIndex, sequence]);
-
   const processVote = (voteData: any) => {
     const newVotes = [...votesArray, voteData];
     
-    // Se ainda há mais cargos para votar
     if (currentRoleIndex < sequence.length - 1) {
-      playUrnaSound('key'); // Bip curto de passagem
+      playUrnaSound('key'); 
       setVotesArray(newVotes);
       setCurrentRoleIndex(currentRoleIndex + 1);
       setDigits("");
     } else {
-      // Se for o ÚLTIMO cargo, emite o Piiiiiii longo!
       playUrnaSound('end');
       setShowEndAnim(true);
       setTimeout(() => {
@@ -165,6 +152,17 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
       }, 2500);
     }
   };
+
+  const handleBlank = useCallback(() => {
+    if (step !== 'urna' || showEndAnim) return;
+    playUrnaSound('key');
+    processVote({ role: currentRole, number: -1, type: "branco" });
+  }, [step, showEndAnim, currentRole, votesArray, currentRoleIndex, sequence]);
+
+  const handleConfirm = useCallback(() => {
+    if (step !== 'urna' || showEndAnim || digits.length < maxDigits) return;
+    processVote({ role: currentRole, number: parseInt(digits), type: candidate ? "candidate" : "nulo" });
+  }, [step, showEndAnim, digits, candidate, currentRole, votesArray, currentRoleIndex, sequence, maxDigits]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -187,7 +185,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
       {step === 'identificacao' ? (
         <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-2xl border-t-4 border-blue-600 relative z-10 animate-in fade-in zoom-in duration-500">
           
-          {/* BOTÃO ECRÃ INTEIRO NO TOPO DA JANELA DO MESÁRIO */}
           <button 
             onClick={toggleFullscreen} 
             title="Ativar/Desativar Ecrã Inteiro"
@@ -243,24 +240,25 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
                   <p className="text-sm font-black tracking-widest text-slate-800 uppercase mb-1">Seu voto para</p>
                   <p className="text-4xl font-black uppercase text-blue-800 mb-8">{currentRole}</p>
                   
-                  <div className="grid grid-cols-[120px_1fr] gap-8 items-start">
+                  <div className="grid grid-cols-[120px_1fr] md:grid-cols-[180px_1fr] gap-8 items-start">
                     <div className="space-y-3">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Número</p>
                       <div className="flex gap-2">
+                        {/* OS QUADRADINHOS AGORA SE ADAPTAM (2 OU 3) BASEADOS NO MAXDIGITS */}
                         {Array.from({ length: maxDigits }).map((_, i) => (
-                          <div key={i} className="w-14 h-20 border-2 border-slate-800 bg-white flex items-center justify-center text-5xl font-black shadow-inner rounded-sm">{digits[i] || ""}</div>
+                          <div key={i} className="w-12 h-16 md:w-14 md:h-20 border-2 border-slate-800 bg-white flex items-center justify-center text-4xl md:text-5xl font-black shadow-inner rounded-sm">{digits[i] || ""}</div>
                         ))}
                       </div>
                     </div>
 
                     {digits.length === maxDigits && candidate ? (
                       <div className="flex flex-col justify-center pl-6 border-l-4 border-slate-300 animate-in fade-in slide-in-from-left-4 duration-300 h-full">
-                        <p className="font-black text-4xl text-slate-800 leading-none mb-3">{candidate.name}</p>
-                        {candidate.vice_name && <p className="font-bold text-lg text-slate-600 bg-slate-200 inline-block px-3 py-1 rounded">Vice: {candidate.vice_name}</p>}
+                        <p className="font-black text-3xl md:text-4xl text-slate-800 leading-none mb-3">{candidate.name}</p>
+                        {candidate.vice_name && <p className="font-bold text-base md:text-lg text-slate-600 bg-slate-200 inline-block px-3 py-1 rounded self-start">Vice: {candidate.vice_name}</p>}
                       </div>
                     ) : digits.length === maxDigits ? (
                       <div className="pl-6 flex items-center h-full animate-in fade-in duration-300">
-                        <p className="font-black text-5xl text-slate-800 tracking-tighter">VOTO NULO</p>
+                        <p className="font-black text-4xl md:text-5xl text-slate-800 tracking-tighter">VOTO NULO</p>
                       </div>
                     ) : null}
                   </div>
