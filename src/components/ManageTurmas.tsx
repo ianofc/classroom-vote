@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Users, Upload, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer } from "lucide-react";
+import { Plus, Trash2, Users, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Turma { id: string; name: string; }
 interface Student {
-  id: string; turma_id: string; name: string; document?: string | null; contact?: string | null;
-  is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string; photo_url?: string; vice_photo_url?: string;
+  id: string; turma_id: string; name: string;
+  is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string;
 }
 
 const ROLES = ["Líder Geral", "Líder Quilombola", "Líder Rural", "Líder LGBTQIA+", "Líder Indígena"];
@@ -24,12 +24,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
 
   // Estados de Formulário de Aluno
   const [newStudent, setNewStudent] = useState<Partial<Student>>({ 
-    name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] 
+    name: "", is_candidate: false, candidate_role: ROLES[0] 
   });
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [vicePhotoFile, setVicePhotoFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isImportingCSV, setIsImportingCSV] = useState(false);
 
@@ -92,35 +90,21 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   };
 
   // ==================== GESTÃO DE ALUNOS E CANDIDATOS ====================
-  const uploadPhoto = async (file: File): Promise<string | null> => {
-    const fileExt = file.name.split('.').pop();
-    const filePath = `fotos/${Math.random()}.${fileExt}`;
-    const { error } = await supabase.storage.from('candidatos-fotos').upload(filePath, file);
-    if (error) return null;
-    return supabase.storage.from('candidatos-fotos').getPublicUrl(filePath).data.publicUrl;
-  };
-
   const startEditStudent = (s: Student) => {
     setNewStudent({
       name: s.name,
-      document: s.document || "",
-      contact: s.contact || "",
       is_candidate: s.is_candidate,
       candidate_role: s.candidate_role || ROLES[0],
       candidate_number: s.candidate_number || undefined,
       vice_name: s.vice_name || ""
     });
     setEditingStudentId(s.id);
-    setPhotoFile(null);
-    setVicePhotoFile(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Rola para o formulário
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
   const cancelEditStudent = () => {
-    setNewStudent({ name: "", document: "", contact: "", is_candidate: false, candidate_role: ROLES[0] });
+    setNewStudent({ name: "", is_candidate: false, candidate_role: ROLES[0] });
     setEditingStudentId(null);
-    setPhotoFile(null);
-    setVicePhotoFile(null);
   };
 
   const handleSaveStudent = async () => {
@@ -134,41 +118,22 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     }
 
     setIsUploading(true);
-    let pUrl = undefined;
-    let vpUrl = undefined;
-    
-    if (newStudent.is_candidate) {
-      if (photoFile) pUrl = await uploadPhoto(photoFile);
-      if (vicePhotoFile) vpUrl = await uploadPhoto(vicePhotoFile);
-    }
 
     const payload: any = {
       turma_id: selectedTurma.id, 
       name: newStudent.name.trim(), 
-      document: newStudent.document?.trim() || null, 
-      contact: newStudent.contact?.trim() || null,
       is_candidate: newStudent.is_candidate, 
       candidate_role: newStudent.is_candidate ? newStudent.candidate_role : null,
       candidate_number: newStudent.is_candidate ? newStudent.candidate_number : null, 
       vice_name: newStudent.is_candidate ? newStudent.vice_name : null, 
     };
 
-    if (pUrl !== undefined) payload.photo_url = pUrl;
-    if (vpUrl !== undefined) payload.vice_photo_url = vpUrl;
-    // Se o usuário desmarcou a opção candidato, limpamos os dados de candidato
-    if (!newStudent.is_candidate) {
-      payload.photo_url = null;
-      payload.vice_photo_url = null;
-    }
-
     let error, data;
 
     if (editingStudentId) {
-      // Atualizar Aluno Existente
       const res = await supabase.from('students').update(payload).eq('id', editingStudentId).select().single();
       error = res.error; data = res.data;
     } else {
-      // Inserir Novo Aluno
       const res = await supabase.from('students').insert(payload).select().single();
       error = res.error; data = res.data;
     }
@@ -210,8 +175,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         const newStudents = rows.slice(1).map(row => ({
           turma_id: selectedTurma.id,
           name: row[0]?.trim(),
-          document: row[1]?.trim() || null,
-          contact: row[2]?.trim() || null,
           is_candidate: false
         })).filter(s => s.name); 
 
@@ -238,7 +201,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
       return;
     }
 
-    // Agrupar por Cargo
     const grouped: Record<string, Student[]> = {};
     candidates.forEach(c => {
       const role = c.candidate_role || "Líder Geral";
@@ -369,14 +331,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Nome Completo *</label>
                   <input type="text" placeholder="Nome do Aluno" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Documento / Fone (Opcional)</label>
-                  <input type="text" placeholder="RG, CPF ou Telefone" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500" value={newStudent.document || ''} onChange={e => setNewStudent({...newStudent, document: e.target.value})} />
                 </div>
               </div>
               
@@ -403,18 +361,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
                     <label className="text-xs font-bold text-slate-600 uppercase">Nome do Vice (Opcional)</label>
                     <input type="text" placeholder="Nome do companheiro de chapa" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 mt-0.5" value={newStudent.vice_name || ''} onChange={e => setNewStudent({...newStudent, vice_name: e.target.value})} />
                   </div>
-                  <div className="md:col-span-2 grid grid-cols-2 gap-4 pt-2">
-                    <label className="cursor-pointer bg-slate-50 border border-dashed border-slate-300 p-4 flex flex-col items-center justify-center text-xs font-bold text-slate-500 rounded-xl hover:border-blue-500 transition-colors">
-                      <Upload className="w-5 h-5 mb-2 text-blue-500" /> 
-                      {photoFile ? <span className="text-green-600">Nova Foto Titular OK</span> : (editingStudentId ? "Atualizar Foto Titular" : "Anexar Foto Titular")}
-                      <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files && setPhotoFile(e.target.files[0])} />
-                    </label>
-                    <label className="cursor-pointer bg-slate-50 border border-dashed border-slate-300 p-4 flex flex-col items-center justify-center text-xs font-bold text-slate-500 rounded-xl hover:border-blue-500 transition-colors">
-                      <Upload className="w-5 h-5 mb-2 text-slate-400" /> 
-                      {vicePhotoFile ? <span className="text-green-600">Nova Foto Vice OK</span> : (editingStudentId ? "Atualizar Foto Vice" : "Anexar Foto Vice")}
-                      <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files && setVicePhotoFile(e.target.files[0])} />
-                    </label>
-                  </div>
                 </div>
               )}
               <button onClick={handleSaveStudent} disabled={isUploading} className={`w-full text-white font-black uppercase tracking-widest py-3.5 rounded-xl flex justify-center gap-2 transition-all shadow-md disabled:opacity-50 ${editingStudentId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-800 hover:bg-slate-900'}`}>
@@ -430,9 +376,8 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
                 <div key={s.id} className="p-4 border border-slate-200 rounded-xl flex justify-between items-center bg-white shadow-sm hover:border-slate-300 transition-colors">
                   <div>
                     <p className="font-bold text-slate-800 text-sm md:text-base leading-tight">{s.name}</p>
-                    <p className="text-xs text-slate-500 mb-1">Doc: {s.document || "Pendente"}</p>
                     {s.is_candidate && (
-                      <span className="inline-flex items-center bg-blue-100/80 border border-blue-200 text-blue-800 text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-md uppercase">
+                      <span className="inline-flex items-center bg-blue-100/80 border border-blue-200 text-blue-800 text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-md uppercase mt-1">
                         <UserCheck className="w-3 h-3 mr-1.5" /> {s.candidate_role} (Nº {s.candidate_number})
                       </span>
                     )}
