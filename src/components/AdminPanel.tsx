@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, User, PieChart
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -55,10 +55,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const fetchAllData = async () => {
     setReportLoading(true);
+    
+    // AUMENTAMOS O LIMITE PARA 15.000 PARA EVITAR O CORTE DO SUPABASE
     const [votesRes, turmasRes, candidatesRes] = await Promise.all([
-      supabase.from("votes").select("*").order("created_at", { ascending: false }),
-      supabase.from("turmas").select("id, name").order("name"),
-      supabase.from("students").select("*").eq("is_candidate", true)
+      supabase.from("votes").select("*").limit(15000).order("created_at", { ascending: false }),
+      supabase.from("turmas").select("id, name").limit(2000).order("name"),
+      supabase.from("students").select("*").limit(5000).eq("is_candidate", true)
     ]);
 
     if (votesRes.error) toast({ title: "Erro", description: votesRes.error.message, variant: "destructive" });
