@@ -56,24 +56,61 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const fetchAllData = async () => {
     setReportLoading(true);
     
-    // AUMENTAMOS O LIMITE PARA 15.000 PARA EVITAR O CORTE DO SUPABASE
-    const [votesRes, turmasRes, candidatesRes] = await Promise.all([
-      supabase.from("votes").select("*").limit(15000).order("created_at", { ascending: false }),
-      supabase.from("turmas").select("id, name").limit(2000).order("name"),
-      supabase.from("students").select("*").limit(5000).eq("is_candidate", true)
-    ]);
+    // =========================================================================
+    // NOVO MOTOR DE BUSCA: Fura o limite de 1000 do Supabase buscando em blocos
+    // =========================================================================
+    const fetchEverything = async (tableName: string) => {
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let fetchMore = true;
 
-    if (votesRes.error) toast({ title: "Erro", description: votesRes.error.message, variant: "destructive" });
-    else setAllVotes(votesRes.data as ExtendedVoteRecord[]);
-    
-    if (turmasRes.data) {
-      setAllTurmas(turmasRes.data);
-      if (!apuracaoTurmaId && turmasRes.data.length > 0) {
-        setApuracaoTurmaId(turmasRes.data[0].id);
+      while (fetchMore) {
+        const { data, error } = await supabase
+          .from(tableName)
+          .select('*')
+          .range(from, from + step - 1);
+
+        if (error) {
+          toast({ title: `Erro a buscar ${tableName}`, description: error.message, variant: "destructive" });
+          break;
+        }
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          if (data.length < step) fetchMore = false;
+          else from += step;
+        } else {
+          fetchMore = false;
+        }
       }
+      return allData;
+    };
+
+    try {
+      const [votesData, turmasData, candidatesRes] = await Promise.all([
+        fetchEverything('votes'),
+        fetchEverything('turmas'),
+        supabase.from("students").select("*").eq("is_candidate", true).limit(5000)
+      ]);
+
+      // Ordenamos os votos pelos mais recentes localmente
+      const sortedVotes = votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setAllVotes(sortedVotes as ExtendedVoteRecord[]);
+      
+      if (turmasData) {
+        // Ordenamos as turmas alfabeticamente localmente
+        const sortedTurmas = turmasData.sort((a, b) => a.name.localeCompare(b.name));
+        setAllTurmas(sortedTurmas);
+        if (!apuracaoTurmaId && sortedTurmas.length > 0) {
+          setApuracaoTurmaId(sortedTurmas[0].id);
+        }
+      }
+      
+      if (candidatesRes.data) setAllCandidates(candidatesRes.data);
+
+    } catch (err) {
+      console.error(err);
     }
-    
-    if (candidatesRes.data) setAllCandidates(candidatesRes.data);
     
     setReportLoading(false);
   };
