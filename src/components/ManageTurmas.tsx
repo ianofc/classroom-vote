@@ -45,14 +45,15 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
 
   const fetchTurmas = async () => {
     setLoading(true);
-    const { data } = await supabase.from('turmas').select('*').order('name');
+    const { data } = await supabase.from('turmas').select('*').limit(2000).order('name');
     if (data) setTurmas(data);
     setLoading(false);
   };
 
   const fetchStudents = async (turmaId: string) => {
     setLoading(true);
-    const { data } = await supabase.from('students').select('*').eq('turma_id', turmaId).order('name');
+    // Aumentamos o limite de estudantes buscados por turma também, por precaução
+    const { data } = await supabase.from('students').select('*').eq('turma_id', turmaId).limit(5000).order('name');
     if (data) setStudents(data);
     setLoading(false);
   };
@@ -275,10 +276,12 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const printAllCandidatesList = async () => {
     setIsPrinting(true);
     
+    // AUMENTAMOS O LIMITE PARA BUSCAR TODAS AS CHAPAS MESMO QUE SEJAM MUITAS
     const { data: allCandidates, error } = await supabase
       .from('students')
       .select('*')
       .eq('is_candidate', true)
+      .limit(5000)
       .order('candidate_number');
 
     setIsPrinting(false);
@@ -300,19 +303,17 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     const sortedTurmas = [...turmas]
       .filter(t => !t.name.toLowerCase().includes('teste')) 
       .sort((a, b) => {
-        // 1. Extrai o Ano (se não tiver número no início, vai para o final = 999)
         const getYear = (name: string) => {
           const match = name.trim().match(/^(\d+)/);
           return match ? parseInt(match[1], 10) : 999;
         };
         
-        // 2. Extrai o Turno verificando a última letra (M = 1, V = 2, N = 3)
         const getShift = (name: string) => {
           const u = name.toUpperCase().trim();
           if (u.endsWith('M')) return 1; // Matutino
           if (u.endsWith('V')) return 2; // Vespertino
           if (u.endsWith('N')) return 3; // Noturno
-          return 4; // Outros/Indefinido
+          return 4; // Outros
         };
 
         const yearA = getYear(a.name);
@@ -323,10 +324,8 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         const shiftB = getShift(b.name);
         if (shiftA !== shiftB) return shiftA - shiftB;
 
-        // 3. Regulares (mais curtos) antes de Técnicos (mais longos)
         if (a.name.length !== b.name.length) return a.name.length - b.name.length;
 
-        // 4. Ordem Alfabética Padrão
         return a.name.localeCompare(b.name);
       });
     
