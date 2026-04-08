@@ -30,6 +30,7 @@ interface AdminPanelProps {
 type Tab = "apuracao" | "reports" | "turmas" | "admins";
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
+  const [escolaNome, setEscolaNome] = useState("Carregando Escola...");
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("apuracao");
   const [isPrinting, setIsPrinting] = useState(false);
@@ -87,6 +88,30 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     };
 
     try {
+      // --- NOVO: Busca o nome da escola do admin logado ---
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user) {
+        const { data: adminData, error: adminError } = await supabase
+          .from('admins')
+          .select(`
+            escolas (
+              nome
+            )
+          `)
+          .eq('auth_id', userData.user.id)
+          .single();
+          
+        // Verifica as duas formas como o Supabase pode retornar a relação
+        if (adminData?.escolas && !Array.isArray(adminData.escolas) && adminData.escolas.nome) {
+          setEscolaNome(adminData.escolas.nome);
+        } else if (adminData?.escolas && Array.isArray(adminData.escolas) && adminData.escolas[0]?.nome) {
+           setEscolaNome(adminData.escolas[0].nome);
+        } else {
+           setEscolaNome("Escola não encontrada");
+        }
+      }
+      // ---------------------------------------------------
+
       const [votesData, turmasData, candidatesRes] = await Promise.all([
         fetchEverything('votes'),
         fetchEverything('turmas'),
@@ -185,6 +210,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
     const turmaName = escapeHtml(getTurmaName(apuracaoTurmaId));
+    const nomeDaEscolaSeguro = escapeHtml(escolaNome); // <-- Nome Dinâmico
 
     let rolesHtml = '';
     if (apuracaoResults && apuracaoResults.length > 0) {
@@ -260,7 +286,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         </head>
         <body>
           <div class="cabecalho">
-            <h1>CEEPS Seabra-Ba</h1>
+            <h1>${nomeDaEscolaSeguro}</h1>
             <div class="sub">Boletim de Urna - Resultado Oficial da Apuração</div>
             <h3 style="margin-top: 15px; font-size: 18px; color: #333;">Turma Analisada: ${turmaName}</h3>
           </div>
@@ -275,7 +301,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           ${rolesHtml}
           
           <div class="rodape">
-            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema Oficial de Votação CEEPS.<br/>
+            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema Oficial de Votação - ${nomeDaEscolaSeguro}.<br/>
             Este boletim reflete a exata contagem dos votos criptografados e registrados no banco de dados em nuvem.
             <div class="creditos">
               Sistema Desenvolvido por Ian Santos
@@ -311,6 +337,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const printFilteredReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    const nomeDaEscolaSeguro = escapeHtml(escolaNome); // <-- Nome Dinâmico
 
     const rows = filteredReport.map(v => `
       <tr>
@@ -327,7 +354,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     const reportHtml = `
       <html>
         <head>
-          <title>Auditoria de Votação - CEEPS</title>
+          <title>Auditoria de Votação - ${nomeDaEscolaSeguro}</title>
           <style>
             body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
             .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
@@ -347,7 +374,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         </head>
         <body>
           <div class="cabecalho">
-            <h1>CEEPS Seabra-Ba</h1>
+            <h1>${nomeDaEscolaSeguro}</h1>
             <div class="sub">Relatório Oficial de Auditoria Cadastral</div>
           </div>
           <div class="filters">
@@ -363,7 +390,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             <tbody>${rows}</tbody>
           </table>
           <div class="rodape">
-            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema Oficial de Votação CEEPS.<br/>
+            Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo Sistema Oficial de Votação - ${nomeDaEscolaSeguro}.<br/>
             Para salvar em PDF, utilize a opção "Salvar como PDF" no destino de impressão.
             <div class="creditos">
               Sistema Desenvolvido por Ian Santos
@@ -392,7 +419,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
         <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
-          <ShieldCheck className="w-4 h-4" /> GESTÃO DE ELEIÇÕES
+          <ShieldCheck className="w-4 h-4" /> GESTÃO DE ELEIÇÕES - {escolaNome}
         </div>
       </div>
 
