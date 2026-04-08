@@ -39,6 +39,15 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [isImportingCSV, setIsImportingCSV] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
+  // ==================== FUNÇÃO ESPIÃ PARA AUDITORIA ====================
+  const registrarLog = async (acao: string, detalhes: string) => {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user?.email) {
+      await supabase.from('admin_logs').insert({ admin_email: data.user.email, acao, detalhes });
+    }
+  };
+  // =====================================================================
+
   useEffect(() => { 
     fetchTurmas(); 
     fetchCargos();
@@ -133,6 +142,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
     else {
       setTurmas([...turmas, data]);
+      
+      // LOG DE AUDITORIA
+      registrarLog("CRIOU TURMA", `A turma "${newTurmaName.trim()}" foi adicionada.`);
+      
       setNewTurmaName("");
       toast({ title: "Sucesso", description: "Turma criada!" });
       onTurmasChanged();
@@ -162,6 +175,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     if (!error) {
       setTurmas(turmas.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
+      
+      // LOG DE AUDITORIA
+      registrarLog("DELETOU TURMA", `Uma turma foi deletada, apagando todos os seus alunos e votos.`);
+      
       onTurmasChanged();
       toast({ title: "Sucesso", description: "Turma excluída." });
     }
@@ -185,11 +202,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     setEditingStudentId(null);
   };
 
-  // FUNÇÃO NOVA: Promove um eleitor para candidato rapidamente
   const promoteToCandidate = (s: Student) => {
     setNewStudent({
       name: s.name,
-      is_candidate: true, // Força a ser candidato
+      is_candidate: true,
       candidate_role: s.candidate_role || defaultRole,
       candidate_number: undefined,
       vice_name: ""
@@ -199,7 +215,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     toast({ title: "Atribuindo Candidatura", description: "Escolha o cargo e número para confirmar." });
   };
 
-  // FUNÇÃO NOVA: Retira a candidatura de alguém (volta a ser eleitor)
   const demoteFromCandidate = async (s: Student) => {
     if (!confirm(`Remover a candidatura de ${s.name}? Ele voltará a ser apenas eleitor nesta turma.`)) return;
     
@@ -268,7 +283,12 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const handleDeleteStudent = async (id: string) => {
     if (!confirm("Apagar aluno permanentemente do sistema?")) return;
     const { error } = await supabase.from('students').delete().eq('id', id);
-    if (!error) setStudents(students.filter(s => s.id !== id));
+    if (!error) {
+      setStudents(students.filter(s => s.id !== id));
+      
+      // LOG DE AUDITORIA
+      registrarLog("DELETOU ALUNO", `Um aluno/candidato foi deletado manualmente do banco de dados.`);
+    }
   };
 
   // ==================== IMPORTAÇÃO E IMPRESSÃO (CARTAZ GERAL) ====================
