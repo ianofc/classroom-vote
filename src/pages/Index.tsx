@@ -218,41 +218,43 @@ const Index = () => {
       {phase === "auth" && (
         <div className="w-full max-w-6xl min-h-screen md:min-h-[85vh] md:my-8 bg-white dark:bg-slate-900 md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500 border border-slate-200 dark:border-slate-800">
           
-          {/* PAINEL LATERAL ESQUERDO: AZUL, VERMELHO E BRANCO */}
-          <div className="hidden md:flex md:w-5/12 bg-[#0f172a] p-12 flex-col justify-between text-white relative overflow-hidden border-r border-slate-800">
+          {/* PAINEL LATERAL ESQUERDO: AZUL MODERNO, DETALHES VERMELHOS E BRANCO */}
+          <div className="hidden md:flex md:w-5/12 bg-gradient-to-br from-blue-700 to-indigo-900 p-12 flex-col justify-between text-white relative overflow-hidden">
             
-            {/* Efeitos de Luz no Fundo (Azul e Vermelho) */}
-            <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20 pointer-events-none">
-               <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-600 blur-[100px]"></div>
-               <div className="absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-red-600 blur-[100px]"></div>
+            {/* Efeitos de Luz no Fundo Otimizados (Azul Brilhante e Vermelho vibrante) */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-30 pointer-events-none">
+               <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-400 blur-[120px]"></div>
+               <div className="absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-red-500 blur-[120px]"></div>
             </div>
 
             <div className="relative z-10">
+              {/* Logo com Escudo em Vermelho vivo */}
               <div className="flex items-center gap-3 mb-10">
-                <ShieldCheck className="w-10 h-10 text-red-500" />
+                <ShieldCheck className="w-10 h-10 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
                 <h1 className="text-3xl font-black tracking-tight text-white">Classroom Vote</h1>
               </div>
 
-              <h2 className="text-4xl font-black leading-tight mb-6 text-white">
+              <h2 className="text-4xl font-black leading-tight mb-6 text-white tracking-tighter">
                 A democracia na sua escola levada a sério.
               </h2>
-              <p className="text-slate-300 text-lg mb-12 max-w-sm font-medium">
+              <p className="text-blue-100 text-lg mb-12 max-w-sm font-medium">
                 Plataforma de votação criptografada em Blockchain, simples de usar e com apuração em tempo real.
               </p>
 
-              {/* Depoimento Oficial */}
-              <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 p-6 rounded-2xl mb-8 shadow-2xl">
+              {/* Depoimento Oficial com bordas e aspas em Vermelho */}
+              <div className="bg-white/10 backdrop-blur-sm border border-red-500/30 p-6 rounded-2xl mb-8 shadow-2xl">
                 <MessageSquareQuote className="w-8 h-8 text-red-500 mb-4 opacity-90" />
-                <p className="font-medium text-slate-200 italic leading-relaxed mb-6">
+                <p className="font-medium text-blue-50 italic leading-relaxed mb-6">
                   "O sistema revolucionou a forma como elegemos os nossos líderes! A apuração na Eleição de Líderes de Sala foi instantânea e 100% à prova de fraudes."
                 </p>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-black text-white shadow-lg border-2 border-red-500/30">
+                  {/* Avatar IS com fundo Vermelho Forte */}
+                  <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-black text-white shadow-lg border-2 border-red-400">
                     IS
                   </div>
                   <div>
                     <p className="font-black text-sm text-white tracking-wide">Ian Santos</p>
-                    <p className="text-xs text-slate-400 mt-0.5 leading-tight">
+                    <p className="text-xs text-blue-300 mt-0.5 leading-tight">
                       Professor, CEEPS Seabra-Ba e<br/>Criador do App Classroom Vote
                     </p>
                   </div>
@@ -260,12 +262,12 @@ const Index = () => {
               </div>
             </div>
 
-            {/* Instituições */}
-            <div className="relative z-10 border-t border-slate-700/50 pt-8 mt-auto">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">Instituições que confiam</p>
+            {/* Instituições com linha divisória Vermelha */}
+            <div className="relative z-10 border-t border-red-500/30 pt-8 mt-auto">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200 mb-4">Instituições que confiam</p>
               <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-700 shadow-sm">
-                  <Building2 className="w-4 h-4 text-blue-500"/> 
+                <div className="flex items-center gap-2 bg-blue-800/80 px-4 py-2.5 rounded-xl border border-blue-700 shadow-sm transition-transform hover:scale-105">
+                  <Building2 className="w-4 h-4 text-blue-400"/> 
                   <span className="text-sm font-black tracking-widest text-white">CEEPS</span>
                 </div>
               </div>
