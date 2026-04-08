@@ -62,16 +62,17 @@ export function deleteTurma(id: string) {
 export async function validateAdmin(username: string, password: string): Promise<boolean> {
   if (!supabase) return false;
   
-  const { data, error } = await supabase
-    .from('admins')
-    .select('id')
-    .eq('username', username)
-    .eq('password', password)
-    .single();
+  // Agora usamos o motor de autenticação criptografado do Supabase
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: username, // O campo de "Usuário" no frontend agora receberá um e-mail
+    password: password,
+  });
 
-  if (error || !data) {
+  if (error || !data.user) {
+    console.error("Falha no login:", error?.message);
     return false;
   }
+  
   return true;
 }
 
