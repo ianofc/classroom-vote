@@ -17,6 +17,7 @@ initMercadoPago('0000000');
 interface ExtendedVoteRecord {
   id?: string;
   turma_id?: string;
+  eleicao_id?: string; // NOVO: Relacionamento com a eleição
   voter_name: string;
   voter_document: string;
   voter_contact: string;
@@ -55,6 +56,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
   const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
   const [allCandidates, setAllCandidates] = useState<any[]>([]); 
+  const [allEleicoes, setAllEleicoes] = useState<any[]>([]); // NOVO: Estado das Eleições
   const [systemLogs, setSystemLogs] = useState<AdminLog[]>([]); 
   
   const [reportLoading, setReportLoading] = useState(false);
@@ -63,7 +65,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
   
-  const [filters, setFilters] = useState({ search: "", turmaId: turma ? turma.id : "", voteType: "", date: "" });
+  // NOVO: Adicionado eleicaoId nos filtros
+  const [filters, setFilters] = useState({ search: "", turmaId: turma ? turma.id : "", eleicaoId: "", voteType: "", date: "" });
   const [apuracaoTurmaId, setApuracaoTurmaId] = useState(turma ? turma.id : "");
 
   useEffect(() => { 
@@ -121,11 +124,13 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         }
       }
 
-      const [votesData, turmasData, candidatesRes, logsData] = await Promise.all([
+      // NOVO: Busca a tabela 'eleicoes' junto com as outras
+      const [votesData, turmasData, candidatesRes, logsData, eleicoesData] = await Promise.all([
         fetchEverything('votes'),
         fetchEverything('turmas'),
         supabase.from("students").select("*").eq("is_candidate", true).limit(5000),
-        supabase.from("admin_logs").select("*").order('created_at', { ascending: false }).limit(200)
+        supabase.from("admin_logs").select("*").order('created_at', { ascending: false }).limit(200),
+        fetchEverything('eleicoes')
       ]);
 
       const sortedVotes = votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -139,6 +144,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       
       if (candidatesRes.data) setAllCandidates(candidatesRes.data);
       if (logsData.data) setSystemLogs(logsData.data);
+      if (eleicoesData) {
+        const sortedEleicoes = eleicoesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setAllEleicoes(sortedEleicoes);
+      }
 
     } catch (err) { 
       console.error(err); 
@@ -173,7 +182,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     setCurrentPage(1); 
   }, [filters]); 
 
+  // Helpers para pegar os nomes pelo ID
   const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
+  const getEleicaoNome = (id?: string) => allEleicoes.find(e => e.id === id)?.nome || "Histórico Geral";
 
   const apuracaoOverview = useMemo(() => {
     if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
@@ -333,9 +344,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       const s = filters.search.toLowerCase();
       const matchSearch = !s || v.voter_name.toLowerCase().includes(s) || (v.voter_document && v.voter_document.includes(s));
       const matchTurma = !filters.turmaId || v.turma_id === filters.turmaId;
+      const matchEleicao = !filters.eleicaoId || v.eleicao_id === filters.eleicaoId; // NOVO: Filtro de Eleição
       const matchType = !filters.voteType || v.vote_type === filters.voteType;
       const matchDate = !filters.date || (v.created_at && v.created_at.startsWith(filters.date));
-      return matchSearch && matchTurma && matchType && matchDate;
+      return matchSearch && matchTurma && matchEleicao && matchType && matchDate;
     });
   }, [allVotes, filters]);
 
@@ -351,6 +363,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     const rows = filteredReport.map(v => `
       <tr>
         <td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td>
+        <td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td>
         <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
         <td><strong>${escapeHtml(v.voter_name)}</strong></td>
         <td style="text-align: center; font-weight: bold;">
@@ -389,6 +402,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
           <div class="filters">
             <strong>Filtros aplicados na pesquisa:</strong><br/>
+            Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | 
             Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | 
             Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | 
             Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/>
@@ -396,7 +410,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
           <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
           <table>
-            <thead><tr><th>Data/Hora</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Eleição</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
           <div class="rodape">
@@ -451,7 +465,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         </div>
       </div>
 
-      {/* MENU ATUALIZADO COM A ABA LOGS */}
+      {/* MENU DE ABAS */}
       <div className="w-full max-w-[1200px] flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm mb-6 justify-center">
         {(["apuracao", "reports", "eleicoes", "turmas", "admins", "logs", "perfil"] as Tab[]).map((tab) => (
           <button
@@ -607,7 +621,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3">
                 <Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              
+              {/* NOVO: Grid atualizado para 5 colunas para caber o novo filtro de Eleição */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label>
                   <div className="relative">
@@ -615,6 +631,16 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                     <input type="text" placeholder="Nome" className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
                   </div>
                 </div>
+
+                {/* NOVO: FILTRO DE ELEIÇÃO */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Eleição</label>
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value})}>
+                    <option value="">Todas as Eleições</option>
+                    {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                  </select>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Turma</label>
                   <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}>
@@ -639,6 +665,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   </div>
                 </div>
               </div>
+              
               <div className="flex justify-between items-center pt-4 border-t mt-4">
                 <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
                 <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50">
@@ -665,6 +692,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                     <thead className="bg-slate-50 sticky top-0 shadow-sm z-10">
                       <tr className="text-[10px] text-slate-500 uppercase">
                         <th className="p-4 font-black">Data/Hora</th>
+                        <th className="p-4 font-black">Eleição</th> {/* NOVA COLUNA */}
                         <th className="p-4 font-black">Turma</th>
                         <th className="p-4 font-black">Eleitor</th>
                         <th className="p-4 font-black text-center">Voto Computado</th>
@@ -672,10 +700,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {/* MAP AGORA USA O RELATÓRIO PAGINADO, EVITANDO TRAVAMENTOS */}
                       {paginatedReport.map((v, i) => (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                           <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
+                          {/* DADO DA NOVA COLUNA */}
+                          <td className="p-4 font-semibold text-slate-700 text-xs">{getEleicaoNome(v.eleicao_id)}</td>
                           <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
                           <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name}</p></td>
                           <td className="p-4 text-center">
@@ -702,7 +731,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 )}
               </div>
 
-              {/* CONTROLES DE PAGINAÇÃO - O SEGREDO DO BIG DATA */}
+              {/* CONTROLES DE PAGINAÇÃO */}
               {totalPages > 1 && (
                 <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
                   <p className="text-xs text-slate-500 font-bold">Página {currentPage} de {totalPages}</p>
@@ -716,7 +745,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ===================== NOVA ABA: LOGS DE AUDITORIA ===================== */}
+        {/* ===================== ABA: LOGS DE AUDITORIA ===================== */}
         {activeTab === "logs" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
             <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
