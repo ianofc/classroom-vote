@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, Download
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, Download, Loader2
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -11,8 +11,13 @@ import MeuPerfil from "./MeuPerfil";
 import ManageEleicoes from "./ManageEleicoes"; 
 import { toast } from "@/hooks/use-toast";
 
+// Módulo do Mercado Pago
 import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
-initMercadoPago('0000000');
+
+// =========================================================================
+// ⚠️ ATENÇÃO: CHAVE PÚBLICA (PUBLIC KEY) DE TESTE AQUI!
+// =========================================================================
+initMercadoPago('TEST-a214b8d9-cf59-432c-8059-9868daf8b378');
 
 interface ExtendedVoteRecord {
   id?: string;
@@ -49,6 +54,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [isExpired, setIsExpired] = useState(false); 
   const [validadeStr, setValidadeStr] = useState("");
   
+  // ESTADOS DO MERCADO PAGO
+  const [preferenceId, setPreferenceId] = useState<string | null>(null);
+  const [loadingPayment, setLoadingPayment] = useState(false);
+
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("apuracao");
   const [isPrinting, setIsPrinting] = useState(false);
@@ -113,10 +122,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
              const dataValidade = new Date(escolaData.valid_until);
              const dataHoje = new Date();
              setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
+             
+             // VERIFICA SE O PLANO EXPIROU
              if (dataHoje > dataValidade || escolaData.status === 'suspended') {
                setIsExpired(true); 
                setReportLoading(false); 
-               return; 
+               return; // Para a execução aqui
              }
            }
         }
@@ -151,6 +162,42 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
     setReportLoading(false);
   };
+
+  // =========================================================================
+  // GERAÇÃO DA COBRANÇA (CHAMA A EDGE FUNCTION)
+  // =========================================================================
+  const gerarCobrancaMercadoPago = async () => {
+    setLoadingPayment(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      // Invoca a função 'create-preference' que criamos no Supabase
+      const { data, error } = await supabase.functions.invoke('create-preference', {
+        body: { 
+          escolaNome: escolaNome, 
+          adminEmail: userData?.user?.email || 'contato@escola.com' 
+        }
+      });
+
+      if (error) throw error;
+      
+      if (data?.preferenceId) {
+        setPreferenceId(data.preferenceId);
+      }
+    } catch (err) {
+      console.error("Erro ao gerar pagamento:", err);
+      toast({ title: "Falha na Cobrança", description: "Não foi possível conectar ao Mercado Pago.", variant: "destructive" });
+    } finally {
+      setLoadingPayment(false);
+    }
+  };
+
+  // Se a tela for bloqueada, tenta gerar a cobrança automaticamente
+  useEffect(() => {
+    if (isExpired && escolaNome !== "Carregando Escola..." && !preferenceId) {
+      gerarCobrancaMercadoPago();
+    }
+  }, [isExpired, escolaNome]);
 
   const logAction = async (acao: string, detalhes: string) => {
     const { data } = await supabase.auth.getUser();
@@ -430,22 +477,17 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
   };
 
-  // =====================================================================================
-  // EXPORTAÇÃO PARA EXCEL / CSV
-  // =====================================================================================
   const exportToCSV = () => {
     if (filteredReport.length === 0) {
       toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
       return;
     }
 
-    // Cabeçalho da Planilha
     let csvContent = "Data/Hora,Eleicao,Turma,Eleitor,Cargo,Voto_Computado\n";
 
-    // Linhas
     filteredReport.forEach(v => {
       const data = v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-';
-      const eleicao = getEleicaoNome(v.eleicao_id).replace(/,/g, ''); // Remove vírgulas para não quebrar a planilha
+      const eleicao = getEleicaoNome(v.eleicao_id).replace(/,/g, ''); 
       const turma = getTurmaName(v.turma_id).replace(/,/g, '');
       const eleitor = v.voter_name.replace(/,/g, '');
       const cargo = v.candidate_role || 'Líder Geral';
@@ -460,7 +502,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       csvContent += `${data},${eleicao},${turma},${eleitor},${cargo},${voto}\n`;
     });
 
-    // Criando o arquivo e forçando o download (O \uFEFF é para o Excel ler acentos do Brasil corretamente)
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -473,15 +514,42 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     toast({ title: "Sucesso", description: "Download do arquivo Excel concluído!" });
   };
 
+  // =========================================================================
+  // RENDERIZAÇÃO DA TELA DE BLOQUEIO (MERCADO PAGO)
+  // =========================================================================
   if (isExpired) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center space-y-6 animate-in zoom-in-95 duration-500">
-            <AlertTriangle className="w-16 h-16 mx-auto text-red-600 mb-4" />
-            <h1 className="text-2xl font-black uppercase tracking-tight">Acesso Bloqueado</h1>
-            <p className="text-slate-600 font-medium">Sua chave de acesso venceu. Renove sua assinatura.</p>
-            <div id="wallet_container"><Wallet initialization={{ preferenceId: '0' }} /></div>
-            <button onClick={onBack} className="text-sm font-bold text-slate-400 hover:text-slate-600">Sair do Sistema</button>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-blue-600/10 blur-[100px] pointer-events-none rounded-full w-full h-full"></div>
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center space-y-6 animate-in zoom-in-95 duration-500 relative z-10 border border-slate-200">
+            <AlertTriangle className="w-16 h-16 mx-auto text-red-600 mb-2 drop-shadow-md" />
+            <h1 className="text-2xl font-black uppercase tracking-tight text-slate-800">Acesso Expirado</h1>
+            <p className="text-slate-500 font-medium">Sua chave de acesso venceu no dia <strong>{validadeStr}</strong>. Para continuar gerenciando eleições na <strong>{escolaNome}</strong>, renove a licença.</p>
+            
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-inner">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Valor da Renovação (Mensal)</p>
+              <p className="text-4xl font-black text-blue-600 mb-6">R$ 197<span className="text-lg text-slate-400">/mês</span></p>
+
+              {loadingPayment ? (
+                <div className="flex flex-col items-center justify-center py-6 gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                  <p className="text-xs font-bold text-slate-500 uppercase">Conectando ao Mercado Pago...</p>
+                </div>
+              ) : preferenceId ? (
+                <div id="wallet_container" className="animate-in fade-in duration-500">
+                  {/* O BOTÃO OFICIAL DO MERCADO PAGO APARECE AQUI */}
+                  <Wallet initialization={{ preferenceId: preferenceId }} customization={{ texts: { valueProp: 'security_safety' } }} />
+                </div>
+              ) : (
+                <button onClick={gerarCobrancaMercadoPago} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-colors uppercase tracking-widest text-sm">
+                  Tentar Novamente
+                </button>
+              )}
+            </div>
+
+            <button onClick={onBack} className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors pt-2 uppercase tracking-widest">
+              Voltar ao Início
+            </button>
         </div>
       </div>
     );
@@ -528,9 +596,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
       <div className="w-full max-w-[1200px]">
 
-        {/* ================================================= */}
         {/* ABA DE APURAÇÃO (DASHBOARD) */}
-        {/* ================================================= */}
         {activeTab === "apuracao" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
@@ -653,9 +719,178 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ================================================= */}
-        {/* ABA DE RELATÓRIOS (AUDITORIA E EXPORTAÇÃO EXCEL) */}
-        {/* ================================================= */}
+        {/* ABA DE RELATÓRIOS E EXPORTAÇÃO */}
         {activeTab === "reports" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-white p-6 rounded-2xl border border
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3">
+                <Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input type="text" placeholder="Nome" className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Eleição</label>
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value})}>
+                    <option value="">Todas as Eleições</option>
+                    {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Turma</label>
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}>
+                    <option value="">Todas as Turmas</option>
+                    {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Tipo de Voto</label>
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}>
+                    <option value="">Todos</option>
+                    <option value="candidate">Válidos (Candidatos)</option>
+                    <option value="branco">Em Branco</option>
+                    <option value="nulo">Nulos</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Data da Votação</label>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
+                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
+                
+                <div className="flex gap-2 w-full md:w-auto">
+                  <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50">
+                    <Download className="w-4 h-4" /> Exportar Planilha (Excel)
+                  </button>
+
+                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50">
+                    <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
+                 <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span>
+                 <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">
+                    {showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR VOTOS" : "REVELAR VOTOS"}
+                  </button>
+              </div>
+              
+              <div className="overflow-x-auto min-h-[400px]">
+                {reportLoading ? (
+                  <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Carregando milhões de registros...</div>
+                ) : paginatedReport.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">Nenhum voto encontrado para estes filtros.</div>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10">
+                      <tr className="text-[10px] text-slate-500 uppercase">
+                        <th className="p-4 font-black">Data/Hora</th>
+                        <th className="p-4 font-black">Eleição</th>
+                        <th className="p-4 font-black">Turma</th>
+                        <th className="p-4 font-black">Eleitor</th>
+                        <th className="p-4 font-black text-center">Voto Computado</th>
+                        <th className="p-4 font-black text-center">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedReport.map((v, i) => (
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
+                          <td className="p-4 font-semibold text-slate-700 text-xs">{getEleicaoNome(v.eleicao_id)}</td>
+                          <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
+                          <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name}</p></td>
+                          <td className="p-4 text-center">
+                            {showVotes ? (
+                              <>
+                                <span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">{v.candidate_role || 'Geral'}</span>
+                                <span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                  {v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-slate-300 italic text-xs flex justify-center items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center">
+                            <button onClick={() => handleDeleteVote(v.id!, v.voter_name)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir voto">
+                              <Trash2 className="w-4 h-4 mx-auto" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                  <p className="text-xs text-slate-500 font-bold">Página {currentPage} de {totalPages}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ABA DE LOGS */}
+        {activeTab === "logs" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
+            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+              <div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div>
+              <div>
+                <h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2>
+                <p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+              {systemLogs.length === 0 && <p className="text-center text-sm text-slate-400 py-10">Nenhuma ação sensível registada recentemente.</p>}
+              {systemLogs.map(log => (
+                <div key={log.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-slate-100 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <div className="md:w-48 text-xs text-slate-400 font-mono font-bold flex-shrink-0">
+                    {new Date(log.created_at).toLocaleString('pt-BR')}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">{log.acao}</span>
+                      <span className="text-xs font-bold text-slate-600">{log.admin_email}</span>
+                    </div>
+                    <p className="text-sm font-medium text-slate-800">{log.detalhes}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "eleicoes" && <div className="animate-in fade-in duration-300"><ManageEleicoes /></div>}
+        {activeTab === "turmas" && <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageTurmas onTurmasChanged={onTurmasChanged} /></div>}
+        {activeTab === "admins" && <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageAdmins /></div>}
+        {activeTab === "perfil" && <div className="animate-in fade-in duration-300"><MeuPerfil escolaNome={escolaNome} /></div>}
+      </div>
+    </div>
+  );
+};
+
+export default AdminPanel;
