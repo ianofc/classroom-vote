@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard, User, CheckSquare, Maximize
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -11,10 +11,7 @@ import MeuPerfil from "./MeuPerfil";
 import ManageEleicoes from "./ManageEleicoes"; 
 import { toast } from "@/hooks/use-toast";
 
-// Módulo do Mercado Pago
 import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
-
-// INICIALIZANDO COM A SUA CHAVE DE TESTE (Pública)
 initMercadoPago('0000000');
 
 interface ExtendedVoteRecord {
@@ -29,17 +26,25 @@ interface ExtendedVoteRecord {
   created_at?: string;
 }
 
-type Tab = "apuracao" | "reports" | "eleicoes" | "turmas" | "admins" | "perfil";
+interface AdminLog { 
+  id: string; 
+  admin_email: string; 
+  acao: string; 
+  detalhes: string; 
+  created_at: string; 
+}
 
-interface AdminPanelProps {
-  turma: Turma | null;
-  onBack: () => void;
-  onTurmasChanged: () => void;
+type Tab = "apuracao" | "reports" | "eleicoes" | "turmas" | "admins" | "perfil" | "logs";
+
+interface AdminPanelProps { 
+  turma: Turma | null; 
+  onBack: () => void; 
+  onTurmasChanged: () => void; 
 }
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [escolaNome, setEscolaNome] = useState("Carregando Escola...");
-  const [escolaLogo, setEscolaLogo] = useState<string | null>(null); // ESTADO DO LOGO DA ESCOLA
+  const [escolaLogo, setEscolaLogo] = useState<string | null>(null); 
   const [isExpired, setIsExpired] = useState(false); 
   const [validadeStr, setValidadeStr] = useState("");
   
@@ -50,20 +55,19 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
   const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
   const [allCandidates, setAllCandidates] = useState<any[]>([]); 
+  const [systemLogs, setSystemLogs] = useState<AdminLog[]>([]); 
   
   const [reportLoading, setReportLoading] = useState(false);
   
-  const [filters, setFilters] = useState({
-    search: "",
-    turmaId: turma ? turma.id : "", 
-    voteType: "",
-    date: ""
-  });
-
+  // PAGINAÇÃO BIG DATA
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+  
+  const [filters, setFilters] = useState({ search: "", turmaId: turma ? turma.id : "", voteType: "", date: "" });
   const [apuracaoTurmaId, setApuracaoTurmaId] = useState(turma ? turma.id : "");
 
-  useEffect(() => {
-    document.documentElement.classList.remove('dark');
+  useEffect(() => { 
+    document.documentElement.classList.remove('dark'); 
   }, []);
 
   const fetchAllData = async () => {
@@ -71,26 +75,18 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     
     const fetchEverything = async (tableName: string) => {
       let allData: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let fetchMore = true;
-
+      let from = 0; const step = 1000; let fetchMore = true;
       while (fetchMore) {
-        const { data, error } = await supabase
-          .from(tableName)
-          .select('*')
-          .range(from, from + step - 1);
-
-        if (error) {
-          toast({ title: `Erro a buscar ${tableName}`, description: error.message, variant: "destructive" });
-          break;
+        const { data, error } = await supabase.from(tableName).select('*').range(from, from + step - 1);
+        if (error) { 
+          toast({ title: `Erro a buscar ${tableName}`, description: error.message, variant: "destructive" }); 
+          break; 
         }
         if (data && data.length > 0) {
           allData = [...allData, ...data];
-          if (data.length < step) fetchMore = false;
-          else from += step;
-        } else {
-          fetchMore = false;
+          if (data.length < step) fetchMore = false; else from += step;
+        } else { 
+          fetchMore = false; 
         }
       }
       return allData;
@@ -101,17 +97,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       if (userData?.user) {
         const { data: adminData } = await supabase
           .from('admins')
-          .select(`
-            escolas (
-              nome,
-              valid_until,
-              status,
-              logo_url
-            )
-          `)
+          .select(`escolas (nome, valid_until, status, logo_url)`)
           .eq('auth_id', userData.user.id)
           .single();
-          
+
         let escolaData = null;
         if (adminData?.escolas && !Array.isArray(adminData.escolas)) escolaData = adminData.escolas as any;
         else if (adminData?.escolas && Array.isArray(adminData.escolas)) escolaData = adminData.escolas[0] as any;
@@ -119,25 +108,24 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         if (escolaData) {
            setEscolaNome(escolaData.nome);
            if (escolaData.logo_url) setEscolaLogo(escolaData.logo_url);
-           
            if (escolaData.valid_until) {
              const dataValidade = new Date(escolaData.valid_until);
              const dataHoje = new Date();
              setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
-             
              if (dataHoje > dataValidade || escolaData.status === 'suspended') {
-               setIsExpired(true);
-               setReportLoading(false);
+               setIsExpired(true); 
+               setReportLoading(false); 
                return; 
              }
            }
         }
       }
 
-      const [votesData, turmasData, candidatesRes] = await Promise.all([
+      const [votesData, turmasData, candidatesRes, logsData] = await Promise.all([
         fetchEverything('votes'),
         fetchEverything('turmas'),
-        supabase.from("students").select("*").eq("is_candidate", true).limit(5000)
+        supabase.from("students").select("*").eq("is_candidate", true).limit(5000),
+        supabase.from("admin_logs").select("*").order('created_at', { ascending: false }).limit(200)
       ]);
 
       const sortedVotes = votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -146,20 +134,26 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       if (turmasData) {
         const sortedTurmas = turmasData.sort((a, b) => a.name.localeCompare(b.name));
         setAllTurmas(sortedTurmas);
-        if (!apuracaoTurmaId && sortedTurmas.length > 0) {
-          setApuracaoTurmaId(sortedTurmas[0].id);
-        }
+        if (!apuracaoTurmaId && sortedTurmas.length > 0) setApuracaoTurmaId(sortedTurmas[0].id);
       }
+      
       if (candidatesRes.data) setAllCandidates(candidatesRes.data);
+      if (logsData.data) setSystemLogs(logsData.data);
 
-    } catch (err) {
-      console.error(err);
+    } catch (err) { 
+      console.error(err); 
     }
-    
     setReportLoading(false);
   };
 
-  const handleDeleteVote = async (id: string) => {
+  const logAction = async (acao: string, detalhes: string) => {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user?.email) {
+      await supabase.from('admin_logs').insert({ admin_email: data.user.email, acao, detalhes });
+    }
+  };
+
+  const handleDeleteVote = async (id: string, voterName: string) => {
     if (!confirm("Atenção! Excluir este voto permanentemente?")) return;
     const { error } = await supabase.from('votes').delete().eq('id', id);
     if (error) {
@@ -167,12 +161,17 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     } else {
       toast({ title: "Sucesso", description: "Voto excluído com sucesso." });
       setAllVotes(allVotes.filter(v => v.id !== id));
+      logAction("EXCLUSÃO DE VOTO", `Voto de ${voterName} deletado da auditoria.`);
     }
   };
 
   useEffect(() => {
-    if (activeTab === "reports" || activeTab === "apuracao") fetchAllData();
+    if (["reports", "apuracao", "logs"].includes(activeTab)) fetchAllData();
   }, [activeTab]);
+
+  useEffect(() => { 
+    setCurrentPage(1); 
+  }, [filters]); 
 
   const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
 
@@ -180,52 +179,38 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
     const tVotes = allVotes.filter(v => v.turma_id === apuracaoTurmaId);
     return {
-      total: tVotes.length,
+      total: tVotes.length, 
       validos: tVotes.filter(v => v.vote_type === 'candidate').length,
-      brancos: tVotes.filter(v => v.vote_type === 'branco').length,
+      brancos: tVotes.filter(v => v.vote_type === 'branco').length, 
       nulos: tVotes.filter(v => v.vote_type === 'nulo').length
     };
   }, [apuracaoTurmaId, allVotes]);
 
   const apuracaoResults = useMemo(() => {
     if (!apuracaoTurmaId) return null;
-    
     const turmaVotes = allVotes.filter(v => v.turma_id === apuracaoTurmaId);
     const turmaCandidates = allCandidates.filter(c => c.turma_id === apuracaoTurmaId);
     const roles = Array.from(new Set(turmaCandidates.map(c => c.candidate_role)));
     
-    const resultsByRole = roles.map(role => {
+    return roles.map(role => {
       const votesForRole = turmaVotes.filter(v => v.candidate_role === role || (!v.candidate_role && role === "Líder Geral"));
       const totalVotes = votesForRole.length;
-      const candidatesForRole = turmaCandidates.filter(c => c.candidate_role === role);
-      
-      const candidateResults = candidatesForRole.map(c => {
+      const candidateResults = turmaCandidates.filter(c => c.candidate_role === role).map(c => {
         const vCount = votesForRole.filter(v => v.vote_type === 'candidate' && v.candidate_number === c.candidate_number).length;
-        return { 
-          ...c, 
-          votes: vCount, 
-          percentage: totalVotes > 0 ? (vCount / totalVotes) * 100 : 0 
-        };
+        return { ...c, votes: vCount, percentage: totalVotes > 0 ? (vCount / totalVotes) * 100 : 0 };
       }).sort((a, b) => b.votes - a.votes);
       
       const brancos = votesForRole.filter(v => v.vote_type === 'branco').length;
       const nulos = votesForRole.filter(v => v.vote_type === 'nulo').length;
       
       return {
-        role,
-        totalVotes,
-        candidateResults,
+        role, totalVotes, candidateResults,
         brancos: { votes: brancos, percentage: totalVotes > 0 ? (brancos/totalVotes)*100 : 0 },
         nulos: { votes: nulos, percentage: totalVotes > 0 ? (nulos/totalVotes)*100 : 0 }
       };
     });
-    
-    return resultsByRole;
   }, [apuracaoTurmaId, allVotes, allCandidates]);
 
-  // =====================================================================================
-  // BOLETIM DE URNA (PDF)
-  // =====================================================================================
   const printDashboardReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -354,9 +339,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     });
   }, [allVotes, filters]);
 
-  // =====================================================================================
-  // RELATÓRIO DE AUDITORIA GERAL (PDF)
-  // =====================================================================================
+  // BIG DATA: PAGINAÇÃO DA LISTA FILTRADA
+  const totalPages = Math.ceil(filteredReport.length / itemsPerPage);
+  const paginatedReport = filteredReport.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   const printFilteredReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -438,40 +424,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   if (isExpired) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
-          <div className="bg-red-600 p-8 text-center text-white">
-            <AlertTriangle className="w-16 h-16 mx-auto mb-4 opacity-90" />
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center space-y-6 animate-in zoom-in-95 duration-500">
+            <AlertTriangle className="w-16 h-16 mx-auto text-red-600 mb-4" />
             <h1 className="text-2xl font-black uppercase tracking-tight">Acesso Bloqueado</h1>
-            <p className="font-medium opacity-90 mt-2">O plano da instituição {escolaNome} expirou.</p>
-          </div>
-          
-          <div className="p-8 text-center space-y-6">
-            <p className="text-slate-600 font-medium">
-              Sua chave de acesso venceu no dia <strong className="text-slate-900">{validadeStr}</strong>. 
-              Para continuar utilizando o sistema de eleições e acessar os relatórios, renove sua assinatura.
-            </p>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Valor da Renovação</p>
-              <p className="text-4xl font-black text-slate-800">R$ 197<span className="text-lg text-slate-400">/mês</span></p>
-              
-              <div className="mt-6">
-                <div id="wallet_container">
-                  <Wallet 
-                    initialization={{ preferenceId: 'COLOQUE_A_PREFERENCE_ID_AQUI' }} 
-                    customization={{ texts: { valueProp: 'security_safety' } }} 
-                  />
-                </div>
-                <button className="w-full bg-[#009EE3] hover:bg-[#0089C4] text-white font-bold py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 mt-2 shadow-md">
-                  <CreditCard className="w-5 h-5" /> Renovar com Mercado Pago
-                </button>
-              </div>
-            </div>
-
-            <button onClick={onBack} className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors">
-              Sair do Sistema
-            </button>
-          </div>
+            <p className="text-slate-600 font-medium">Sua chave de acesso venceu. Renove sua assinatura.</p>
+            <div id="wallet_container"><Wallet initialization={{ preferenceId: '0' }} /></div>
+            <button onClick={onBack} className="text-sm font-bold text-slate-400 hover:text-slate-600">Sair do Sistema</button>
         </div>
       </div>
     );
@@ -479,32 +437,27 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-slate-50 text-slate-900">
-      {/* Cabeçalho Global */}
-      <div className="w-full max-w-5xl flex justify-between items-center mb-6">
+      <div className="w-full max-w-[1200px] flex justify-between items-center mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
-        
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => window.open('/telao', '_blank')} 
-            className="hidden md:flex items-center gap-2 text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
-          >
-            <Maximize className="w-3 h-3" /> ABRIR MODO TELÃO
+          <button onClick={() => window.open('/telao', '_blank')} className="hidden md:flex items-center gap-2 text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors shadow-lg">
+            <Maximize className="w-3 h-3" /> ABRIR TELÃO
           </button>
-          
-          <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
-            <ShieldCheck className="w-4 h-4" /> GESTÃO DE ELEIÇÕES - {escolaNome}
+          <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
+            <ShieldCheck className="w-4 h-4" /> {escolaNome}
           </div>
         </div>
       </div>
 
-      <div className="w-full max-w-5xl grid grid-cols-3 md:grid-cols-6 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
-        {(["apuracao", "reports", "eleicoes", "turmas", "admins", "perfil"] as Tab[]).map((tab) => (
+      {/* MENU ATUALIZADO COM A ABA LOGS */}
+      <div className="w-full max-w-[1200px] flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm mb-6 justify-center">
+        {(["apuracao", "reports", "eleicoes", "turmas", "admins", "logs", "perfil"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex items-center justify-center gap-2 py-3 rounded-lg text-xs md:text-sm font-bold transition-all ${
+            className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all ${
               activeTab === tab ? "bg-blue-600 text-white shadow-md" : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -513,15 +466,18 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             {tab === "eleicoes" && <CheckSquare className="w-4 h-4" />}
             {tab === "turmas" && <GraduationCap className="w-4 h-4" />}
             {tab === "admins" && <ShieldCheck className="w-4 h-4" />}
+            {tab === "logs" && <ActivitySquare className="w-4 h-4" />}
             {tab === "perfil" && <User className="w-4 h-4" />}
             <span className="hidden md:inline">
-              {tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab === "eleicoes" ? "ELEIÇÕES" : tab === "perfil" ? "PERFIL" : tab.toUpperCase()}
+              {tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab.toUpperCase()}
             </span>
           </button>
         ))}
       </div>
 
-      <div className="w-full max-w-5xl">
+      <div className="w-full max-w-[1200px]">
+
+        {/* ABA DE APURAÇÃO (DASHBOARD) */}
         {activeTab === "apuracao" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
@@ -644,6 +600,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
+        {/* ABA DE RELATÓRIOS (AUDITORIA E BIG DATA) */}
         {activeTab === "reports" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -683,7 +640,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 </div>
               </div>
               <div className="flex justify-between items-center pt-4 border-t mt-4">
-                <p className="text-sm text-slate-500 font-medium">Exibindo <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos.</p>
+                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
                 <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50">
                   <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar em PDF / Imprimir"}
                 </button>
@@ -692,15 +649,16 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                 <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem de Votos da Auditoria</span>
-                 <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1 shadow-sm">
+                 <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span>
+                 <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">
                     {showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR VOTOS" : "REVELAR VOTOS"}
                   </button>
               </div>
-              <div className="max-h-[500px] overflow-y-auto">
+              
+              <div className="overflow-x-auto min-h-[400px]">
                 {reportLoading ? (
-                  <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Buscando banco de dados...</div>
-                ) : filteredReport.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Carregando milhões de registros...</div>
+                ) : paginatedReport.length === 0 ? (
                   <div className="p-12 text-center text-slate-400">Nenhum voto encontrado para estes filtros.</div>
                 ) : (
                   <table className="w-full text-left text-sm">
@@ -714,13 +672,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredReport.map((v, i) => (
+                      {/* MAP AGORA USA O RELATÓRIO PAGINADO, EVITANDO TRAVAMENTOS */}
+                      {paginatedReport.map((v, i) => (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                           <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
                           <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
-                          <td className="p-4">
-                            <p className="font-bold text-slate-900">{v.voter_name}</p>
-                          </td>
+                          <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name}</p></td>
                           <td className="p-4 text-center">
                             {showVotes ? (
                               <>
@@ -734,7 +691,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                             )}
                           </td>
                           <td className="p-4 text-center">
-                            <button onClick={() => handleDeleteVote(v.id!)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir este voto">
+                            <button onClick={() => handleDeleteVote(v.id!, v.voter_name)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir voto">
                               <Trash2 className="w-4 h-4 mx-auto" />
                             </button>
                           </td>
@@ -744,35 +701,57 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   </table>
                 )}
               </div>
+
+              {/* CONTROLES DE PAGINAÇÃO - O SEGREDO DO BIG DATA */}
+              {totalPages > 1 && (
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                  <p className="text-xs text-slate-500 font-bold">Página {currentPage} de {totalPages}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* ABA DE GESTÃO DE ELEIÇÕES */}
-        {activeTab === "eleicoes" && (
-          <div className="animate-in fade-in duration-300">
-            <ManageEleicoes />
+        {/* ===================== NOVA ABA: LOGS DE AUDITORIA ===================== */}
+        {activeTab === "logs" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
+            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+              <div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div>
+              <div>
+                <h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2>
+                <p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+              {systemLogs.length === 0 && <p className="text-center text-sm text-slate-400 py-10">Nenhuma ação sensível registada recentemente.</p>}
+              {systemLogs.map(log => (
+                <div key={log.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-slate-100 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <div className="md:w-48 text-xs text-slate-400 font-mono font-bold flex-shrink-0">
+                    {new Date(log.created_at).toLocaleString('pt-BR')}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">{log.acao}</span>
+                      <span className="text-xs font-bold text-slate-600">{log.admin_email}</span>
+                    </div>
+                    <p className="text-sm font-medium text-slate-800">{log.detalhes}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {activeTab === "turmas" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300">
-            <ManageTurmas onTurmasChanged={onTurmasChanged} />
-          </div>
-        )}
-
-        {activeTab === "admins" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300">
-            <ManageAdmins />
-          </div>
-        )}
-
-        {/* ABA DO PERFIL DO GESTOR */}
-        {activeTab === "perfil" && (
-          <div className="animate-in fade-in duration-300">
-            <MeuPerfil escolaNome={escolaNome} />
-          </div>
-        )}
+        {/* ... OUTRAS ABAS (Turmas, Eleições, Admins, Perfil) ... */}
+        {activeTab === "eleicoes" && <div className="animate-in fade-in duration-300"><ManageEleicoes /></div>}
+        {activeTab === "turmas" && <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageTurmas onTurmasChanged={onTurmasChanged} /></div>}
+        {activeTab === "admins" && <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageAdmins /></div>}
+        {activeTab === "perfil" && <div className="animate-in fade-in duration-300"><MeuPerfil escolaNome={escolaNome} /></div>}
       </div>
     </div>
   );
