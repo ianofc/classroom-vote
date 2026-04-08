@@ -36,6 +36,7 @@ const playUrnaSound = (type: 'key' | 'end') => {
 };
 
 const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
+  const [escolaNome, setEscolaNome] = useState("ESCOLA"); // <- NOVO ESTADO
   const [step, setStep] = useState<'identificacao' | 'urna'>('identificacao');
   const [voterData, setVoterData] = useState({ name: "" }); 
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -48,6 +49,26 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
     supabase.from('students').select('*').eq('turma_id', turma.id).then(({data}) => {
       if (data) setTurmaStudents(data);
     });
+
+    // ==================== BUSCA O NOME DA ESCOLA ====================
+    const fetchEscola = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user) {
+         const { data: adminData } = await supabase
+          .from('admins')
+          .select('escolas(nome)')
+          .eq('auth_id', userData.user.id)
+          .single();
+         
+         if (adminData?.escolas && !Array.isArray(adminData.escolas) && adminData.escolas.nome) {
+           setEscolaNome(adminData.escolas.nome);
+         } else if (adminData?.escolas && Array.isArray(adminData.escolas) && adminData.escolas[0]?.nome) {
+           setEscolaNome(adminData.escolas[0].nome);
+         }
+      }
+    };
+    fetchEscola();
+    // ===============================================================
 
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -244,7 +265,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
                     <div className="space-y-3">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Número</p>
                       <div className="flex gap-2">
-                        {/* OS QUADRADINHOS AGORA SE ADAPTAM (2 OU 3) BASEADOS NO MAXDIGITS */}
                         {Array.from({ length: maxDigits }).map((_, i) => (
                           <div key={i} className="w-12 h-16 md:w-14 md:h-20 border-2 border-slate-800 bg-white flex items-center justify-center text-4xl md:text-5xl font-black shadow-inner rounded-sm">{digits[i] || ""}</div>
                         ))}
@@ -275,7 +295,13 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: any) => {
 
           <div className="bg-[#2b2b2b] flex flex-col">
             <div className="bg-slate-100 h-[90px] flex items-center px-6 justify-between border-b-4 border-[#1a1a1a]">
-              <div className="h-[55px] px-6 bg-[#202683] text-white flex items-center justify-center font-black text-2xl tracking-widest rounded-sm shadow-inner">CEEPS</div>
+              {/* NOME DA ESCOLA DINÂMICO AQUI */}
+              <div 
+                className="h-[55px] px-6 bg-[#202683] text-white flex items-center justify-center font-black text-lg tracking-widest rounded-sm shadow-inner truncate max-w-[200px]"
+                title={escolaNome.toUpperCase()}
+              >
+                {escolaNome.toUpperCase()}
+              </div>
               <div className="text-right leading-none">
                 <p className="text-3xl font-black text-slate-800 tracking-tighter">JUSTIÇA</p>
                 <p className="text-xl font-black text-slate-800 tracking-tighter">ELEITORAL</p>
