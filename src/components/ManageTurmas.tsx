@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Users, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer, Settings } from "lucide-react";
+import { Plus, Trash2, Users, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer, Settings, UserPlus, UserMinus } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Turma { id: string; name: string; }
@@ -85,7 +85,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   };
 
   const handleDeleteCargo = async (cargo: Cargo) => {
-    // Verifica se existem alunos usando este cargo antes de deletar
     const { count } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('candidate_role', cargo.nome);
     
     if (count && count > 0) {
@@ -116,7 +115,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
        return;
     }
     
-    // Atualiza automaticamente o nome do cargo nos estudantes e votos históricos para não quebrar o sistema
     await supabase.from('students').update({ candidate_role: novoNome }).eq('candidate_role', oldName);
     await supabase.from('votes').update({ candidate_role: novoNome }).eq('candidate_role', oldName);
     
@@ -187,6 +185,39 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     setEditingStudentId(null);
   };
 
+  // FUNÇÃO NOVA: Promove um eleitor para candidato rapidamente
+  const promoteToCandidate = (s: Student) => {
+    setNewStudent({
+      name: s.name,
+      is_candidate: true, // Força a ser candidato
+      candidate_role: s.candidate_role || defaultRole,
+      candidate_number: undefined,
+      vice_name: ""
+    });
+    setEditingStudentId(s.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast({ title: "Atribuindo Candidatura", description: "Escolha o cargo e número para confirmar." });
+  };
+
+  // FUNÇÃO NOVA: Retira a candidatura de alguém (volta a ser eleitor)
+  const demoteFromCandidate = async (s: Student) => {
+    if (!confirm(`Remover a candidatura de ${s.name}? Ele voltará a ser apenas eleitor nesta turma.`)) return;
+    
+    const { error } = await supabase.from('students').update({
+      is_candidate: false,
+      candidate_role: null,
+      candidate_number: null,
+      vice_name: null
+    }).eq('id', s.id);
+
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      setStudents(students.map(st => st.id === s.id ? { ...st, is_candidate: false, candidate_role: undefined, candidate_number: undefined, vice_name: undefined } : st));
+      toast({ title: "Sucesso", description: "O aluno agora é apenas eleitor." });
+    }
+  };
+
   const handleSaveStudent = async () => {
     if (!selectedTurma || !newStudent.name) {
       toast({ title: "Atenção", description: "O Nome do aluno é obrigatório.", variant: "destructive" });
@@ -235,7 +266,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!confirm("Apagar aluno/candidato permanentemente?")) return;
+    if (!confirm("Apagar aluno permanentemente do sistema?")) return;
     const { error } = await supabase.from('students').delete().eq('id', id);
     if (!error) setStudents(students.filter(s => s.id !== id));
   };
@@ -661,14 +692,27 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => startEditStudent(s)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar Cadastro">
+                  
+                  {/* NOVOS BOTÕES MÁGICOS DE PROMOVER/REBAIXAR CANDIDATURA */}
+                  <div className="flex gap-2 items-center">
+                    {s.is_candidate ? (
+                      <button onClick={() => demoteFromCandidate(s)} className="p-2 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors" title="Remover Candidatura (Tornar apenas eleitor)">
+                        <UserMinus className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button onClick={() => promoteToCandidate(s)} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors" title="Lançar como Candidato nesta Eleição">
+                        <UserPlus className="w-4 h-4" />
+                      </button>
+                    )}
+                    
+                    <button onClick={() => startEditStudent(s)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar Nome ou Dados Base">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDeleteStudent(s.id)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Excluir Aluno">
+                    <button onClick={() => handleDeleteStudent(s.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Excluir Aluno do Sistema">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+
                 </div>
               ))}
               {students.length === 0 && <p className="text-sm text-slate-400 text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">Nenhum aluno nesta turma. Adicione ou importe um CSV.</p>}
