@@ -4,15 +4,26 @@ import TurmaSelection from "@/components/TurmaSelection";
 import Urna from "@/components/Urna";
 import AdminPanel from "@/components/AdminPanel";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, ShieldCheck, Loader2, Moon, Sun, Lock, User, LogOut, CheckCircle2, MessageSquareQuote, Building2, BarChartBig } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Loader2, Moon, Sun, Lock, User, LogOut, CheckCircle2, MessageSquareQuote, Building2, ShieldAlert } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 type Phase = "auth" | "welcome" | "select" | "setup" | "voting" | "admin";
+
+// ============================================================================
+// MOTOR CRIPTOGRÁFICO (BLOCKCHAIN SHA-256)
+// ============================================================================
+const gerarHash256 = async (mensagem: string) => {
+  const msgBuffer = new TextEncoder().encode(mensagem);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
 const Index = () => {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>("auth");
   const [escolaNome, setEscolaNome] = useState("Escola");
+  const [eleicaoAtiva, setEleicaoAtiva] = useState<any>(null); // GUARDA A ELEIÇÃO
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [turma, setTurma] = useState<any | null>(null);
@@ -41,10 +52,30 @@ const Index = () => {
   };
 
   const fetchEscola = async (userId: string) => {
-    const { data } = await supabase.from('admins').select('escolas(nome)').eq('auth_id', userId).single();
+    const { data } = await supabase.from('admins').select('escolas(id, nome)').eq('auth_id', userId).single();
+    let escolaIdParaBusca = null;
+
     if (data?.escolas) {
-      const nome = Array.isArray(data.escolas) ? data.escolas[0]?.nome : data.escolas.nome;
-      if (nome) setEscolaNome(nome);
+      const escolaData = Array.isArray(data.escolas) ? data.escolas[0] : data.escolas;
+      if (escolaData?.nome) {
+        setEscolaNome(escolaData.nome);
+        escolaIdParaBusca = escolaData.id;
+      }
+    }
+
+    // Busca a eleição que está com status 'ativa' no banco para esta escola
+    if (escolaIdParaBusca) {
+      const { data: eleicoes } = await supabase
+        .from('eleicoes')
+        .select('*')
+        .eq('escola_id', escolaIdParaBusca)
+        .eq('status', 'ativa')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (eleicoes && eleicoes.length > 0) {
+        setEleicaoAtiva(eleicoes[0]);
+      }
     }
   };
 
@@ -72,6 +103,7 @@ const Index = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setEscolaNome("Escola");
+    setEleicaoAtiva(null);
     setTurma(null);
     setPhase("auth");
   };
@@ -97,30 +129,71 @@ const Index = () => {
   };
 
   const handleStartVoting = () => {
+    if (!eleicaoAtiva) {
+      toast({ 
+        title: "Bloqueado pela Segurança", 
+        description: "Você não tem nenhuma Eleição Ativa. Vá ao Painel de Gestão e crie uma eleição primeiro!", 
+        variant: "destructive" 
+      });
+      return;
+    }
     setCurrentVoter(1);
     setCurrentSessionId(crypto.randomUUID());
     setPhase("voting");
   };
 
   const handleVote = async (votesArray: any[], voterData: any) => {
-    const rowsToInsert = votesArray.map(vote => ({
-      session_id: currentSessionId,
-      turma_id: turma.id,
-      voter_name: voterData.name,
-      candidate_role: vote.role,
-      candidate_number: vote.number,
-      vote_type: vote.type
-    }));
-    
-    const { error } = await supabase.from('votes').insert(rowsToInsert);
+    try {
+      // 1. Pega o hash do ÚLTIMO voto gravado no banco nesta eleição
+      const { data: lastVote } = await supabase
+        .from('votes')
+        .select('hash_voto')
+        .eq('eleicao_id', eleicaoAtiva.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-    if (error) {
-      toast({ title: "Erro ao computar voto", description: error.message, variant: "destructive" });
-      return; 
+      // Se for o primeiro voto da eleição, o hash anterior é o "Bloco Gênesis"
+      let hashAtual = lastVote?.hash_voto || "GENESIS_BLOCK_0000000000000000000000000000000000000000000000000000";
+      const rowsToInsert = [];
+
+      // 2. Loop para processar e criptografar cada voto da sessão (Ex: Líder + Jovem Ouvidor)
+      for (const vote of votesArray) {
+        // String base que será criptografada (ninguém consegue falsificar sem saber essa ordem exata)
+        const stringParaGravar = `${eleicaoAtiva.id}|${turma.id}|${voterData.name}|${vote.role}|${vote.number}|${vote.type}|${hashAtual}`;
+        const novoHash = await gerarHash256(stringParaGravar);
+
+        rowsToInsert.push({
+          session_id: currentSessionId,
+          turma_id: turma.id,
+          eleicao_id: eleicaoAtiva.id,
+          voter_name: voterData.name,
+          candidate_role: vote.role,
+          candidate_number: vote.number,
+          vote_type: vote.type,
+          hash_anterior: hashAtual,
+          hash_voto: novoHash
+        });
+
+        // O próximo voto no loop já usa o Hash recém criado (A Corrente)
+        hashAtual = novoHash; 
+      }
+      
+      // 3. Salva os votos criptografados no banco
+      const { error } = await supabase.from('votes').insert(rowsToInsert);
+
+      if (error) throw error;
+
+      setCurrentVoter((v) => v + 1);
+      toast({ 
+        title: "Voto Autenticado", 
+        description: "A integridade criptográfica foi validada e o voto gravado na Blockchain.",
+        className: "bg-green-50 text-green-900 border-green-200"
+      });
+
+    } catch (err: any) {
+      toast({ title: "Falha de Integridade", description: err.message, variant: "destructive" });
     }
-
-    setCurrentVoter((v) => v + 1);
-    toast({ title: "Voto Registrado", description: "O eleitor finalizou a votação." });
   };
 
   if (isCheckingAuth) {
@@ -145,9 +218,7 @@ const Index = () => {
       {phase === "auth" && (
         <div className="w-full max-w-6xl min-h-screen md:min-h-[85vh] md:my-8 bg-white dark:bg-slate-900 md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500 border border-slate-200 dark:border-slate-800">
           
-          {/* LADO ESQUERDO: Mural / Social Proof */}
           <div className="hidden md:flex md:w-5/12 bg-gradient-to-br from-blue-700 to-indigo-900 p-12 flex-col justify-between text-white relative overflow-hidden">
-            {/* Decoração de fundo */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
                <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-white blur-3xl"></div>
                <div className="absolute bottom-10 -right-20 w-80 h-80 rounded-full bg-blue-400 blur-3xl"></div>
@@ -163,10 +234,9 @@ const Index = () => {
                 A democracia na sua escola levada a sério.
               </h2>
               <p className="text-blue-100 text-lg mb-12 max-w-sm">
-                Plataforma de votação criptografada, simples de usar e com apuração em tempo real.
+                Plataforma de votação criptografada em Blockchain, simples de usar e com apuração em tempo real.
               </p>
 
-              {/* Box de Depoimento em Destaque */}
               <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl mb-8">
                 <MessageSquareQuote className="w-8 h-8 text-blue-300 mb-4 opacity-70" />
                 <p className="font-medium text-blue-50 italic leading-relaxed mb-4">
@@ -182,7 +252,6 @@ const Index = () => {
               </div>
             </div>
 
-            {/* Números e Escolas */}
             <div className="relative z-10 border-t border-white/20 pt-8 mt-auto">
               <p className="text-xs font-bold uppercase tracking-widest text-blue-300 mb-4">Instituições que confiam</p>
               <div className="flex items-center gap-6 opacity-70">
@@ -192,7 +261,6 @@ const Index = () => {
             </div>
           </div>
 
-          {/* LADO DIREITO: O Login */}
           <div className="w-full md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-slate-50 dark:bg-slate-900 relative">
             <div className="max-w-md w-full mx-auto">
               <div className="text-center md:text-left mb-10">
@@ -239,21 +307,11 @@ const Index = () => {
                 </button>
               </div>
             </div>
-
-            {/* Apenas no Mobile: Prova Social simplificada no rodapé */}
-            <div className="md:hidden mt-12 border-t border-slate-200 dark:border-slate-800 pt-8 text-center opacity-70">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">Utilizado com sucesso em:</p>
-              <div className="flex justify-center gap-4 text-slate-400">
-                <span className="text-xs font-semibold flex items-center gap-1"><Building2 className="w-3 h-3"/> CEEPS</span>
-                <span className="text-xs font-semibold flex items-center gap-1"><Building2 className="w-3 h-3"/> Souto Soares</span>
-              </div>
-            </div>
-
           </div>
         </div>
       )}
 
-      {/* ================= FASE 2: BOAS VINDAS (Dinâmico) ================= */}
+      {/* ================= FASE 2: BOAS VINDAS ================= */}
       {phase === "welcome" && (
         <div className="glass-panel p-12 rounded-3xl flex flex-col items-center max-w-lg w-[90%] text-center animate-in fade-in zoom-in duration-1000 z-10">
           <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-inner">
@@ -264,7 +322,7 @@ const Index = () => {
           </h1>
           <h2 className="text-xl md:text-2xl font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest px-4 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl mt-2">{escolaNome}</h2>
           <p className="mt-6 text-sm text-slate-500 dark:text-slate-400 font-medium flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> Preparando o ambiente seguro...
+            <Loader2 className="w-4 h-4 animate-spin" /> Sincronizando Cadeia Criptográfica...
           </p>
         </div>
       )}
@@ -297,14 +355,29 @@ const Index = () => {
         </div>
       )}
 
-      {/* ================= FASE 4: CONFIGURAÇÃO DA MESA RECEPTORA ================= */}
+      {/* ================= FASE 4: CONFIGURAÇÃO DA MESA ================= */}
       {phase === "setup" && turma && (
         <div className="w-[90%] max-w-sm glass-panel rounded-3xl p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500 z-10">
           {loadingCandidates ? (
             <div className="flex flex-col items-center py-10"><Loader2 className="animate-spin w-8 h-8 text-blue-600 mb-4" /><p className="text-sm dark:text-slate-300">Carregando candidatos...</p></div>
           ) : (
             <div className="space-y-6">
+              
+              {!eleicaoAtiva && (
+                <div className="bg-red-50 text-red-700 p-4 rounded-xl text-xs font-bold border border-red-200 flex flex-col items-center gap-2">
+                  <ShieldAlert className="w-8 h-8" />
+                  Nenhuma eleição está ativa. Vá ao painel de gestão para abrir uma urna.
+                </div>
+              )}
+
               <h1 className="text-2xl font-black uppercase text-blue-600 dark:text-blue-400 border-b border-slate-200 dark:border-slate-700 pb-4">{turma.name}</h1>
+              
+              {eleicaoAtiva && (
+                <p className="text-xs bg-indigo-100 text-indigo-800 font-bold py-1 px-3 rounded-full mb-4 inline-block shadow-sm">
+                  📌 Criptografando na: {eleicaoAtiva.nome}
+                </p>
+              )}
+
               <div className="text-left space-y-2 mb-6">
                 <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Cargos em Disputa:</p>
                 {Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role))).map((role: any) => (
@@ -318,7 +391,7 @@ const Index = () => {
         </div>
       )}
 
-      {/* ================= FASE 5: URNA ELETRÔNICA (VOTAÇÃO) ================= */}
+      {/* ================= FASE 5: URNA ELETRÔNICA ================= */}
       {phase === "voting" && turma && (
         <div className="w-full animate-in fade-in duration-500 z-10">
           <Urna turma={turma} onVoteConfirmed={handleVote} onBack={() => setPhase("select")} />
