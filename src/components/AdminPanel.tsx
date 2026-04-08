@@ -3,11 +3,17 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, User, PieChart
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
 import { toast } from "@/hooks/use-toast";
+
+// Módulo do Mercado Pago
+import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
+
+// INICIALIZANDO COM A SUA CHAVE DE TESTE (Pública)
+initMercadoPago('0000000');
 
 interface ExtendedVoteRecord {
   id?: string;
@@ -31,6 +37,9 @@ type Tab = "apuracao" | "reports" | "turmas" | "admins";
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [escolaNome, setEscolaNome] = useState("Carregando Escola...");
+  const [isExpired, setIsExpired] = useState(false); // ESTADO DO BLOQUEIO
+  const [validadeStr, setValidadeStr] = useState("");
+  
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("apuracao");
   const [isPrinting, setIsPrinting] = useState(false);
@@ -57,9 +66,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const fetchAllData = async () => {
     setReportLoading(true);
     
-    // =========================================================================
-    // NOVO MOTOR DE BUSCA: Fura o limite de 1000 do Supabase buscando em blocos
-    // =========================================================================
     const fetchEverything = async (tableName: string) => {
       let allData: any[] = [];
       let from = 0;
@@ -88,49 +94,62 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     };
 
     try {
-      // --- NOVO: Busca o nome da escola do admin logado ---
+      // --- BUSCA ESCOLA E VALIDA O BLOQUEIO ---
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
-        const { data: adminData, error: adminError } = await supabase
+        const { data: adminData } = await supabase
           .from('admins')
           .select(`
             escolas (
-              nome
+              nome,
+              valid_until,
+              status
             )
           `)
           .eq('auth_id', userData.user.id)
           .single();
           
-        // Verifica as duas formas como o Supabase pode retornar a relação
-        if (adminData?.escolas && !Array.isArray(adminData.escolas) && adminData.escolas.nome) {
-          setEscolaNome(adminData.escolas.nome);
-        } else if (adminData?.escolas && Array.isArray(adminData.escolas) && adminData.escolas[0]?.nome) {
-           setEscolaNome(adminData.escolas[0].nome);
-        } else {
-           setEscolaNome("Escola não encontrada");
+        let escolaData = null;
+        if (adminData?.escolas && !Array.isArray(adminData.escolas)) escolaData = adminData.escolas;
+        else if (adminData?.escolas && Array.isArray(adminData.escolas)) escolaData = adminData.escolas[0];
+
+        if (escolaData) {
+           setEscolaNome(escolaData.nome);
+           
+           // LÓGICA DO HARD LOCK (TRAVA O SISTEMA)
+           if (escolaData.valid_until) {
+             const dataValidade = new Date(escolaData.valid_until);
+             const dataHoje = new Date();
+             setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
+             
+             // Se hoje for maior que a validade OU status for suspenso, TRAVA TUDO
+             if (dataHoje > dataValidade || escolaData.status === 'suspended') {
+               setIsExpired(true);
+               setReportLoading(false);
+               return; // PARA A EXECUÇÃO AQUI, NÃO BUSCA MAIS NADA!
+             }
+           }
         }
       }
-      // ---------------------------------------------------
+      // ----------------------------------------
 
+      // Se passou da trava de bloqueio, continua carregando o sistema normalmente...
       const [votesData, turmasData, candidatesRes] = await Promise.all([
         fetchEverything('votes'),
         fetchEverything('turmas'),
         supabase.from("students").select("*").eq("is_candidate", true).limit(5000)
       ]);
 
-      // Ordenamos os votos pelos mais recentes localmente
       const sortedVotes = votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setAllVotes(sortedVotes as ExtendedVoteRecord[]);
       
       if (turmasData) {
-        // Ordenamos as turmas alfabeticamente localmente
         const sortedTurmas = turmasData.sort((a, b) => a.name.localeCompare(b.name));
         setAllTurmas(sortedTurmas);
         if (!apuracaoTurmaId && sortedTurmas.length > 0) {
           setApuracaoTurmaId(sortedTurmas[0].id);
         }
       }
-      
       if (candidatesRes.data) setAllCandidates(candidatesRes.data);
 
     } catch (err) {
@@ -210,7 +229,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
     const turmaName = escapeHtml(getTurmaName(apuracaoTurmaId));
-    const nomeDaEscolaSeguro = escapeHtml(escolaNome); // <-- Nome Dinâmico
+    const nomeDaEscolaSeguro = escapeHtml(escolaNome);
 
     let rolesHtml = '';
     if (apuracaoResults && apuracaoResults.length > 0) {
@@ -337,7 +356,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const printFilteredReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
-    const nomeDaEscolaSeguro = escapeHtml(escolaNome); // <-- Nome Dinâmico
+    const nomeDaEscolaSeguro = escapeHtml(escolaNome);
 
     const rows = filteredReport.map(v => `
       <tr>
@@ -411,6 +430,57 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
   };
 
+  // =======================================================================
+  // TELA DE HARD LOCK (SISTEMA BLOQUEADO)
+  // Se isExpired for TRUE, renderiza SÓ ISSO. O usuário não consegue fugir.
+  // =======================================================================
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
+          <div className="bg-red-600 p-8 text-center text-white">
+            <AlertTriangle className="w-16 h-16 mx-auto mb-4 opacity-90" />
+            <h1 className="text-2xl font-black uppercase tracking-tight">Acesso Bloqueado</h1>
+            <p className="font-medium opacity-90 mt-2">O plano da instituição {escolaNome} expirou.</p>
+          </div>
+          
+          <div className="p-8 text-center space-y-6">
+            <p className="text-slate-600 font-medium">
+              Sua chave de acesso venceu no dia <strong className="text-slate-900">{validadeStr}</strong>. 
+              Para continuar utilizando o sistema de eleições e acessar os relatórios, renove sua assinatura.
+            </p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Valor da Renovação</p>
+              <p className="text-4xl font-black text-slate-800">R$ 197<span className="text-lg text-slate-400">/mês</span></p>
+              
+              <div className="mt-6">
+                {/* BOTÃO DO MERCADO PAGO SDK */}
+                <div id="wallet_container">
+                  <Wallet 
+                    initialization={{ preferenceId: 'COLOQUE_A_PREFERENCE_ID_AQUI' }} 
+                    customization={{ texts: { valueProp: 'security_safety' } }} 
+                  />
+                </div>
+                {/* Fallback visual caso o SDK demore a carregar no teste */}
+                <button className="w-full bg-[#009EE3] hover:bg-[#0089C4] text-white font-bold py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 mt-2 shadow-md">
+                  <CreditCard className="w-5 h-5" /> Renovar com Mercado Pago
+                </button>
+              </div>
+            </div>
+
+            <button onClick={onBack} className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors">
+              Sair do Sistema
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =======================================================================
+  // RENDERIZAÇÃO NORMAL DO SISTEMA (Caso não esteja expirado)
+  // =======================================================================
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-slate-50 text-slate-900">
       {/* Cabeçalho Global */}
@@ -418,7 +488,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
-        <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
+        <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
           <ShieldCheck className="w-4 h-4" /> GESTÃO DE ELEIÇÕES - {escolaNome}
         </div>
       </div>
