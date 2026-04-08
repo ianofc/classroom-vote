@@ -3,10 +3,11 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, CreditCard, User
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
+import MeuPerfil from "./MeuPerfil";
 import { toast } from "@/hooks/use-toast";
 
 // Módulo do Mercado Pago
@@ -27,13 +28,13 @@ interface ExtendedVoteRecord {
   created_at?: string;
 }
 
+type Tab = "apuracao" | "reports" | "turmas" | "admins" | "perfil";
+
 interface AdminPanelProps {
   turma: Turma | null;
   onBack: () => void;
   onTurmasChanged: () => void;
 }
-
-type Tab = "apuracao" | "reports" | "turmas" | "admins";
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [escolaNome, setEscolaNome] = useState("Carregando Escola...");
@@ -94,7 +95,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     };
 
     try {
-      // --- BUSCA ESCOLA E VALIDA O BLOQUEIO ---
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
         const { data: adminData } = await supabase
@@ -116,24 +116,20 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         if (escolaData) {
            setEscolaNome(escolaData.nome);
            
-           // LÓGICA DO HARD LOCK (TRAVA O SISTEMA)
            if (escolaData.valid_until) {
              const dataValidade = new Date(escolaData.valid_until);
              const dataHoje = new Date();
              setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
              
-             // Se hoje for maior que a validade OU status for suspenso, TRAVA TUDO
              if (dataHoje > dataValidade || escolaData.status === 'suspended') {
                setIsExpired(true);
                setReportLoading(false);
-               return; // PARA A EXECUÇÃO AQUI, NÃO BUSCA MAIS NADA!
+               return; 
              }
            }
         }
       }
-      // ----------------------------------------
 
-      // Se passou da trava de bloqueio, continua carregando o sistema normalmente...
       const [votesData, turmasData, candidatesRes] = await Promise.all([
         fetchEverything('votes'),
         fetchEverything('turmas'),
@@ -176,7 +172,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
 
-  // ================== LÓGICA DO DASHBOARD DE APURAÇÃO ==================
   const apuracaoOverview = useMemo(() => {
     if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
     const tVotes = allVotes.filter(v => v.turma_id === apuracaoTurmaId);
@@ -224,7 +219,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     return resultsByRole;
   }, [apuracaoTurmaId, allVotes, allCandidates]);
 
-  // ================== IMPRESSÃO DO DASHBOARD (BOLETIM DE URNA) ==================
   const printDashboardReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -341,7 +335,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
   };
 
-  // ================== LÓGICA DA AUDITORIA (TABELA) ==================
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
       const s = filters.search.toLowerCase();
@@ -430,10 +423,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
   };
 
-  // =======================================================================
-  // TELA DE HARD LOCK (SISTEMA BLOQUEADO)
-  // Se isExpired for TRUE, renderiza SÓ ISSO. O usuário não consegue fugir.
-  // =======================================================================
   if (isExpired) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -455,14 +444,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               <p className="text-4xl font-black text-slate-800">R$ 197<span className="text-lg text-slate-400">/mês</span></p>
               
               <div className="mt-6">
-                {/* BOTÃO DO MERCADO PAGO SDK */}
                 <div id="wallet_container">
                   <Wallet 
                     initialization={{ preferenceId: 'COLOQUE_A_PREFERENCE_ID_AQUI' }} 
                     customization={{ texts: { valueProp: 'security_safety' } }} 
                   />
                 </div>
-                {/* Fallback visual caso o SDK demore a carregar no teste */}
                 <button className="w-full bg-[#009EE3] hover:bg-[#0089C4] text-white font-bold py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 mt-2 shadow-md">
                   <CreditCard className="w-5 h-5" /> Renovar com Mercado Pago
                 </button>
@@ -478,12 +465,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     );
   }
 
-  // =======================================================================
-  // RENDERIZAÇÃO NORMAL DO SISTEMA (Caso não esteja expirado)
-  // =======================================================================
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-slate-50 text-slate-900">
-      {/* Cabeçalho Global */}
       <div className="w-full max-w-5xl flex justify-between items-center mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Voltar
@@ -493,9 +476,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         </div>
       </div>
 
-      {/* Tabs Menu */}
-      <div className="w-full max-w-5xl grid grid-cols-2 md:grid-cols-4 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
-        {(["apuracao", "reports", "turmas", "admins"] as Tab[]).map((tab) => (
+      <div className="w-full max-w-5xl grid grid-cols-2 md:grid-cols-5 gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-6">
+        {(["apuracao", "reports", "turmas", "admins", "perfil"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -507,17 +489,16 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             {tab === "reports" && <FileText className="w-4 h-4" />}
             {tab === "turmas" && <GraduationCap className="w-4 h-4" />}
             {tab === "admins" && <ShieldCheck className="w-4 h-4" />}
-            {tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab.toUpperCase()}
+            {tab === "perfil" && <User className="w-4 h-4" />}
+            {tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab === "perfil" ? "PERFIL" : tab.toUpperCase()}
           </button>
         ))}
       </div>
 
       <div className="w-full max-w-5xl">
-        
-        {/* ======================= ABA DE DASHBOARD (APURAÇÃO) ======================= */}
         {activeTab === "apuracao" && (
+          // ... [O código da aba apuração mantém-se inalterado]
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Seletor de Turmas do Dashboard */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -548,7 +529,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               </div>
             </div>
 
-            {/* Painéis de Resumo (Cards) */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <p className="text-xs font-bold text-slate-500 uppercase">Votos Computados</p>
@@ -598,7 +578,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                                   </p>
                                   <p className="font-black text-blue-600 text-lg leading-none">{cand.votes}</p>
                                 </div>
-                                {/* Barra de Progresso */}
                                 <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden flex">
                                   <div 
                                     className={`h-full transition-all duration-1000 ${cIdx === 0 && cand.votes > 0 ? 'bg-green-500' : 'bg-blue-500'}`} 
@@ -613,7 +592,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                       )}
                     </div>
 
-                    {/* Rodapé do Card: Brancos e Nulos */}
                     <div className="bg-slate-50 border-t border-slate-200 p-4 grid grid-cols-2 gap-4">
                       <div>
                         <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
@@ -641,7 +619,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ======================= ABA DE AUDITORIA ======================= */}
         {activeTab === "reports" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -746,17 +723,22 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ABA DE TURMAS */}
         {activeTab === "turmas" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300">
             <ManageTurmas onTurmasChanged={onTurmasChanged} />
           </div>
         )}
 
-        {/* ABA DE ADMINS */}
         {activeTab === "admins" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300">
             <ManageAdmins />
+          </div>
+        )}
+
+        {/* ABA DO PERFIL DO GESTOR */}
+        {activeTab === "perfil" && (
+          <div className="animate-in fade-in duration-300">
+            <MeuPerfil escolaNome={escolaNome} />
           </div>
         )}
       </div>
