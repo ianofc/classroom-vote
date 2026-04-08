@@ -1,23 +1,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Users, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer } from "lucide-react";
+import { Plus, Trash2, Users, Loader2, CheckSquare, Square, FileUp, UserCheck, Pencil, X, Save, Printer, Settings } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Turma { id: string; name: string; }
+interface Cargo { id: string; nome: string; }
 interface Student {
   id: string; turma_id: string; name: string;
   is_candidate: boolean; candidate_role?: string; candidate_number?: number; vice_name?: string;
 }
-
-// Lista de Cargos Atualizada
-const ROLES = [
-  "Líder Geral", 
-  "Líder Quilombola", 
-  "Líder do Campo", 
-  "Líder LGBTQIA+", 
-  "Líder Indígena",
-  "Líder PCD"
-];
 
 const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -30,9 +21,17 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [editingTurmaId, setEditingTurmaId] = useState<string | null>(null);
   const [editTurmaName, setEditTurmaName] = useState("");
 
-  // Estados de Formulário de Aluno (Apenas Nome)
+  // Estados de Cargos (Dinâmico)
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [isManagingCargos, setIsManagingCargos] = useState(false);
+  const [newCargoName, setNewCargoName] = useState("");
+  const [editingCargoId, setEditingCargoId] = useState<string | null>(null);
+  const [editCargoName, setEditCargoName] = useState("");
+
+  // Estados de Formulário de Aluno
+  const defaultRole = cargos.length > 0 ? cargos[0].nome : "";
   const [newStudent, setNewStudent] = useState<Partial<Student>>({ 
-    name: "", is_candidate: false, candidate_role: ROLES[0] 
+    name: "", is_candidate: false, candidate_role: defaultRole 
   });
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   
@@ -40,7 +39,11 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   const [isImportingCSV, setIsImportingCSV] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
-  useEffect(() => { fetchTurmas(); }, []);
+  useEffect(() => { 
+    fetchTurmas(); 
+    fetchCargos();
+  }, []);
+
   useEffect(() => { if (selectedTurma) fetchStudents(selectedTurma.id); }, [selectedTurma]);
 
   const fetchTurmas = async () => {
@@ -50,13 +53,80 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     setLoading(false);
   };
 
+  const fetchCargos = async () => {
+    const { data } = await supabase.from('cargos').select('*').order('created_at');
+    if (data) {
+      setCargos(data);
+      if (data.length > 0 && !newStudent.candidate_role) {
+        setNewStudent(prev => ({ ...prev, candidate_role: data[0].nome }));
+      }
+    }
+  };
+
   const fetchStudents = async (turmaId: string) => {
     setLoading(true);
-    // Aumentamos o limite de estudantes buscados por turma também, por precaução
     const { data } = await supabase.from('students').select('*').eq('turma_id', turmaId).limit(5000).order('name');
     if (data) setStudents(data);
     setLoading(false);
   };
+
+  // ==================== GESTÃO DE CARGOS DINÂMICOS ====================
+  const handleAddCargo = async () => {
+    if (!newCargoName.trim()) return;
+    const { data, error } = await supabase.from('cargos').insert({ nome: newCargoName.trim() }).select().single();
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      setCargos([...cargos, data]);
+      setNewCargoName("");
+      if (!newStudent.candidate_role) setNewStudent(prev => ({ ...prev, candidate_role: data.nome }));
+      toast({ title: "Sucesso", description: "Cargo adicionado!" });
+    }
+  };
+
+  const handleDeleteCargo = async (cargo: Cargo) => {
+    // Verifica se existem alunos usando este cargo antes de deletar
+    const { count } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('candidate_role', cargo.nome);
+    
+    if (count && count > 0) {
+      toast({ 
+        title: "Ação Bloqueada", 
+        description: `Não é possível apagar. Existem ${count} candidato(s) vinculados ao cargo "${cargo.nome}".`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    const { error } = await supabase.from('cargos').delete().eq('id', cargo.id);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      setCargos(cargos.filter(c => c.id !== cargo.id));
+      toast({ title: "Sucesso", description: "Cargo removido com sucesso!" });
+    }
+  };
+
+  const handleSaveEditCargo = async (cargoId: string, oldName: string) => {
+    if (!editCargoName.trim()) return;
+    const novoNome = editCargoName.trim();
+    
+    const { error } = await supabase.from('cargos').update({ nome: novoNome }).eq('id', cargoId);
+    if (error) {
+       toast({ title: "Erro", description: error.message, variant: "destructive" });
+       return;
+    }
+    
+    // Atualiza automaticamente o nome do cargo nos estudantes e votos históricos para não quebrar o sistema
+    await supabase.from('students').update({ candidate_role: novoNome }).eq('candidate_role', oldName);
+    await supabase.from('votes').update({ candidate_role: novoNome }).eq('candidate_role', oldName);
+    
+    setCargos(cargos.map(c => c.id === cargoId ? { ...c, nome: novoNome } : c));
+    setEditingCargoId(null);
+    if (selectedTurma) fetchStudents(selectedTurma.id); 
+    
+    toast({ title: "Sucesso", description: "Cargo atualizado. Todos os candidatos e votos foram ajustados." });
+  };
+
 
   // ==================== GESTÃO DE TURMAS ====================
   const handleAddTurma = async () => {
@@ -104,7 +174,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     setNewStudent({
       name: s.name,
       is_candidate: s.is_candidate,
-      candidate_role: s.candidate_role || ROLES[0],
+      candidate_role: s.candidate_role || defaultRole,
       candidate_number: s.candidate_number || undefined,
       vice_name: s.vice_name || ""
     });
@@ -113,7 +183,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   };
 
   const cancelEditStudent = () => {
-    setNewStudent({ name: "", is_candidate: false, candidate_role: ROLES[0] });
+    setNewStudent({ name: "", is_candidate: false, candidate_role: defaultRole });
     setEditingStudentId(null);
   };
 
@@ -204,7 +274,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     reader.readAsText(file, 'UTF-8');
   };
 
-  // IMPRESSÃO DE CARTAZ PARA UMA ÚNICA TURMA (COMPACTO)
   const printCandidatesList = () => {
     const candidates = students.filter(s => s.is_candidate);
     if (candidates.length === 0) {
@@ -255,7 +324,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         </head>
         <body>
           <div class="cabecalho">
-            <h1>Eleições CEEPS 2026</h1>
+            <h1>Eleições Oficiais</h1>
             <h2>Candidatos - ${selectedTurma?.name}</h2>
           </div>
           ${htmlContent}
@@ -272,11 +341,9 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     }
   };
 
-  // IMPRESSÃO DE CARTAZ GERAL IGNORANDO A TURMA "TESTE" E ORDENANDO CORRETAMENTE
   const printAllCandidatesList = async () => {
     setIsPrinting(true);
     
-    // AUMENTAMOS O LIMITE PARA BUSCAR TODAS AS CHAPAS MESMO QUE SEJAM MUITAS
     const { data: allCandidates, error } = await supabase
       .from('students')
       .select('*')
@@ -299,7 +366,6 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
 
     let htmlContent = "";
     
-    // Algoritmo Inteligente de Ordenação Escolar (Ano -> Turno -> Regular/Técnico -> Alfabético)
     const sortedTurmas = [...turmas]
       .filter(t => !t.name.toLowerCase().includes('teste')) 
       .sort((a, b) => {
@@ -310,10 +376,10 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         
         const getShift = (name: string) => {
           const u = name.toUpperCase().trim();
-          if (u.endsWith('M')) return 1; // Matutino
-          if (u.endsWith('V')) return 2; // Vespertino
-          if (u.endsWith('N')) return 3; // Noturno
-          return 4; // Outros
+          if (u.endsWith('M')) return 1; 
+          if (u.endsWith('V')) return 2; 
+          if (u.endsWith('N')) return 3; 
+          return 4; 
         };
 
         const yearA = getYear(a.name);
@@ -369,7 +435,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
     const printHtml = `
       <html>
         <head>
-          <title>Cartaz Geral de Candidatos - CEEPS</title>
+          <title>Cartaz Geral de Candidatos</title>
           <style>
             body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #222; }
             .cabecalho { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #dc2626; padding-bottom: 10px; }
@@ -390,13 +456,12 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
         </head>
         <body>
           <div class="cabecalho">
-            <h1>Eleições CEEPS 2026</h1>
+            <h1>Eleições Oficiais</h1>
             <h2>Relação Oficial de Todas as Chapas e Candidatos</h2>
           </div>
           ${htmlContent}
           <div class="rodape">
             Documento Oficial - Cole nos murais da escola e portas das salas.<br/>
-            <strong>Sistema Desenvolvido por Ian Santos</strong>
           </div>
           <script>window.onload = function() { window.print(); }</script>
         </body>
@@ -411,7 +476,58 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative">
+
+      {/* ======================= MODAL DE GERIR CARGOS ======================= */}
+      {isManagingCargos && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button onClick={() => setIsManagingCargos(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600">
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-black text-slate-800 mb-1">Cargos Eleitorais</h2>
+            <p className="text-xs text-slate-500 mb-6 font-medium">Adicione, edite ou remova os cargos em disputa (ex: Jovem Ouvidor).</p>
+            
+            <div className="flex gap-2 mb-6">
+              <input 
+                type="text" 
+                placeholder="Novo Cargo..." 
+                className="flex-1 p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500 bg-slate-50"
+                value={newCargoName} 
+                onChange={e => setNewCargoName(e.target.value)} 
+              />
+              <button onClick={handleAddCargo} className="bg-blue-600 text-white px-4 rounded-xl hover:bg-blue-700 transition-colors font-bold text-sm">
+                Adicionar
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+              {cargos.length === 0 && <p className="text-center text-sm text-slate-400 py-4">Nenhum cargo cadastrado.</p>}
+              {cargos.map(cargo => (
+                <div key={cargo.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-xl bg-white shadow-sm">
+                  {editingCargoId === cargo.id ? (
+                    <div className="flex w-full gap-2 items-center">
+                      <input autoFocus type="text" className="flex-1 p-1 border-b border-blue-300 outline-none text-sm font-bold text-slate-800" value={editCargoName} onChange={e => setEditCargoName(e.target.value)} />
+                      <button onClick={() => handleSaveEditCargo(cargo.id, cargo.nome)} className="text-green-600 hover:bg-green-50 p-1.5 rounded-lg"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingCargoId(null)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="font-bold text-sm text-slate-700">{cargo.nome}</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditingCargoId(cargo.id); setEditCargoName(cargo.nome); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteCargo(cargo)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* ======================= COLUNA ESQUERDA: TURMAS ======================= */}
       <div className="lg:col-span-1 space-y-4 border-r border-slate-200 pr-4">
         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Users className="w-5 h-5 text-blue-600" /> Turmas Cadastradas</h3>
@@ -494,7 +610,7 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
               </div>
               
               <div className="pt-2 border-t border-slate-200/50">
-                <button onClick={() => setNewStudent({...newStudent, is_candidate: !newStudent.is_candidate})} className={`flex items-center gap-2 text-sm font-bold p-3 rounded-lg w-full transition-colors ${newStudent.is_candidate ? 'text-blue-800 bg-blue-100 border border-blue-200' : 'text-slate-600 bg-white border border-slate-200 hover:bg-slate-100'}`}>
+                <button onClick={() => setNewStudent({...newStudent, is_candidate: !newStudent.is_candidate, candidate_role: newStudent.candidate_role || defaultRole})} className={`flex items-center gap-2 text-sm font-bold p-3 rounded-lg w-full transition-colors ${newStudent.is_candidate ? 'text-blue-800 bg-blue-100 border border-blue-200' : 'text-slate-600 bg-white border border-slate-200 hover:bg-slate-100'}`}>
                   {newStudent.is_candidate ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />} 
                   ESTE ALUNO É CANDIDATO (CHAPA)
                 </button>
@@ -503,9 +619,17 @@ const ManageTurmas = ({ onTurmasChanged }: { onTurmasChanged: () => void }) => {
               {newStudent.is_candidate && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
                   <div className="md:col-span-2 space-y-1">
-                    <label className="text-xs font-bold text-slate-600 uppercase">A qual cargo esta chapa concorre?</label>
+                    
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-slate-600 uppercase">A qual cargo esta chapa concorre?</label>
+                      <button onClick={() => setIsManagingCargos(true)} className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1">
+                        <Settings className="w-3 h-3" /> Gerir Cargos
+                      </button>
+                    </div>
+
                     <select className="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-bold text-slate-800 bg-slate-50 outline-none focus:border-blue-500" value={newStudent.candidate_role} onChange={e => setNewStudent({...newStudent, candidate_role: e.target.value})}>
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      {cargos.length === 0 && <option value="">Cadastre um cargo primeiro...</option>}
+                      {cargos.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
