@@ -23,7 +23,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>("auth");
   const [escolaNome, setEscolaNome] = useState("Escola");
-  const [eleicaoAtiva, setEleicaoAtiva] = useState<any>(null); // GUARDA A ELEIÇÃO
+  const [eleicaoAtiva, setEleicaoAtiva] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [turma, setTurma] = useState<any | null>(null);
@@ -63,7 +63,6 @@ const Index = () => {
       }
     }
 
-    // Busca a eleição que está com status 'ativa' no banco para esta escola
     if (escolaIdParaBusca) {
       const { data: eleicoes } = await supabase
         .from('eleicoes')
@@ -144,7 +143,6 @@ const Index = () => {
 
   const handleVote = async (votesArray: any[], voterData: any) => {
     try {
-      // 1. Pega o hash do ÚLTIMO voto gravado no banco nesta eleição
       const { data: lastVote } = await supabase
         .from('votes')
         .select('hash_voto')
@@ -153,13 +151,10 @@ const Index = () => {
         .limit(1)
         .single();
 
-      // Se for o primeiro voto da eleição, o hash anterior é o "Bloco Gênesis"
       let hashAtual = lastVote?.hash_voto || "GENESIS_BLOCK_0000000000000000000000000000000000000000000000000000";
       const rowsToInsert = [];
 
-      // 2. Loop para processar e criptografar cada voto da sessão (Ex: Líder + Jovem Ouvidor)
       for (const vote of votesArray) {
-        // String base que será criptografada (ninguém consegue falsificar sem saber essa ordem exata)
         const stringParaGravar = `${eleicaoAtiva.id}|${turma.id}|${voterData.name}|${vote.role}|${vote.number}|${vote.type}|${hashAtual}`;
         const novoHash = await gerarHash256(stringParaGravar);
 
@@ -175,11 +170,9 @@ const Index = () => {
           hash_voto: novoHash
         });
 
-        // O próximo voto no loop já usa o Hash recém criado (A Corrente)
         hashAtual = novoHash; 
       }
       
-      // 3. Salva os votos criptografados no banco
       const { error } = await supabase.from('votes').insert(rowsToInsert);
 
       if (error) throw error;
@@ -214,23 +207,22 @@ const Index = () => {
         {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
       </button>
 
-      {/* ================= FASE 1: TELA DE LOGIN SAAS (COM MURAL) ================= */}
+      {/* ================= FASE 1: TELA DE LOGIN SAAS ================= */}
       {phase === "auth" && (
         <div className="w-full max-w-6xl min-h-screen md:min-h-[85vh] md:my-8 bg-white dark:bg-slate-900 md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500 border border-slate-200 dark:border-slate-800">
           
           {/* PAINEL LATERAL ESQUERDO: AZUL MODERNO, DETALHES VERMELHOS E BRANCO */}
-          <div className="hidden md:flex md:w-5/12 bg-gradient-to-br from-blue-700 to-indigo-900 p-12 flex-col justify-between text-white relative overflow-hidden">
+          <div className="hidden md:flex md:w-5/12 bg-gradient-to-br from-blue-900 to-slate-900 p-12 flex-col justify-between text-white relative overflow-hidden border-r border-slate-800">
             
-            {/* Efeitos de Luz no Fundo Otimizados (Azul Brilhante e Vermelho vibrante) */}
-            <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-30 pointer-events-none">
-               <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-400 blur-[120px]"></div>
-               <div className="absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-red-500 blur-[120px]"></div>
+            {/* Efeitos de Luz no Fundo (Azul Brilhante e Vermelho) */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-40 pointer-events-none">
+               <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-500 blur-[120px]"></div>
+               <div className="absolute bottom-0 -right-20 w-80 h-80 rounded-full bg-red-600 blur-[120px]"></div>
             </div>
 
             <div className="relative z-10">
-              {/* Logo com Escudo em Vermelho vivo */}
               <div className="flex items-center gap-3 mb-10">
-                <ShieldCheck className="w-10 h-10 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+                <ShieldCheck className="w-10 h-10 text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]" />
                 <h1 className="text-3xl font-black tracking-tight text-white">Classroom Vote</h1>
               </div>
 
@@ -241,20 +233,19 @@ const Index = () => {
                 Plataforma de votação criptografada em Blockchain, simples de usar e com apuração em tempo real.
               </p>
 
-              {/* Depoimento Oficial com bordas e aspas em Vermelho */}
-              <div className="bg-white/10 backdrop-blur-sm border border-red-500/30 p-6 rounded-2xl mb-8 shadow-2xl">
+              {/* Depoimento Oficial com destaques em Vermelho */}
+              <div className="bg-white/5 backdrop-blur-md border border-red-500/40 p-6 rounded-2xl mb-8 shadow-2xl">
                 <MessageSquareQuote className="w-8 h-8 text-red-500 mb-4 opacity-90" />
                 <p className="font-medium text-blue-50 italic leading-relaxed mb-6">
                   "O sistema revolucionou a forma como elegemos os nossos líderes! A apuração na Eleição de Líderes de Sala foi instantânea e 100% à prova de fraudes."
                 </p>
                 <div className="flex items-center gap-4">
-                  {/* Avatar IS com fundo Vermelho Forte */}
                   <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-black text-white shadow-lg border-2 border-red-400">
                     IS
                   </div>
                   <div>
                     <p className="font-black text-sm text-white tracking-wide">Ian Santos</p>
-                    <p className="text-xs text-blue-300 mt-0.5 leading-tight">
+                    <p className="text-xs text-blue-200 mt-0.5 leading-tight">
                       Professor, CEEPS Seabra-Ba e<br/>Criador do App Classroom Vote
                     </p>
                   </div>
@@ -262,12 +253,12 @@ const Index = () => {
               </div>
             </div>
 
-            {/* Instituições com linha divisória Vermelha */}
-            <div className="relative z-10 border-t border-red-500/30 pt-8 mt-auto">
+            {/* Instituições com linha vermelha */}
+            <div className="relative z-10 border-t border-red-500/40 pt-8 mt-auto">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200 mb-4">Instituições que confiam</p>
               <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2 bg-blue-800/80 px-4 py-2.5 rounded-xl border border-blue-700 shadow-sm transition-transform hover:scale-105">
-                  <Building2 className="w-4 h-4 text-blue-400"/> 
+                <div className="flex items-center gap-2 bg-blue-900/60 px-4 py-2.5 rounded-xl border border-blue-700 shadow-sm transition-transform hover:scale-105">
+                  <Building2 className="w-4 h-4 text-red-400"/> 
                   <span className="text-sm font-black tracking-widest text-white">CEEPS</span>
                 </div>
               </div>
