@@ -10,6 +10,9 @@ import ManageAdmins from "./ManageAdmins";
 import MeuPerfil from "./MeuPerfil";
 import { toast } from "@/hooks/use-toast";
 
+import ManageEleicoes from "./ManageEleicoes"; 
+import { CheckSquare } from "lucide-react";
+
 // Módulo do Mercado Pago
 import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
 
