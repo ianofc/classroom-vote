@@ -4,7 +4,7 @@ import TurmaSelection from "@/components/TurmaSelection";
 import Urna from "@/components/Urna";
 import AdminPanel from "@/components/AdminPanel";
 import { supabase } from "@/lib/supabase";
-import { ShieldCheck, Loader2, Moon, Sun, Lock, User, LogOut, CheckCircle2, MessageSquareQuote, Building2, BarChartBig } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Loader2, Moon, Sun, Lock, User, LogOut, CheckCircle2, MessageSquareQuote, Building2, BarChartBig } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 type Phase = "auth" | "welcome" | "select" | "setup" | "voting" | "admin";
