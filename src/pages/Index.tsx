@@ -122,8 +122,34 @@ const Index = () => {
   const handleSelectTurma = async (t: any) => {
     setLoadingCandidates(true);
     setPhase("setup");
-    const { data } = await supabase.from('students').select('*').eq('turma_id', t.id).eq('is_candidate', true);
-    setTurma({ ...t, candidates: data || [] });
+
+    let candidatesData = [];
+
+    // O GRANDE IF ARQUITETADO: A Urna se adapta ao tipo de eleição!
+    if (eleicaoAtiva?.tipo === 'geral') {
+      // 1. Pega os IDs de todas as turmas que pertencem a essa escola
+      const { data: turmasDaEscola } = await supabase.from('turmas').select('id');
+      const turmaIds = turmasDaEscola?.map(tur => tur.id) || [];
+      
+      // 2. Busca TODOS os candidatos da escola inteira de uma vez só
+      if (turmaIds.length > 0) {
+        const { data } = await supabase.from('students')
+          .select('*')
+          .in('turma_id', turmaIds)
+          .eq('is_candidate', true);
+        candidatesData = data || [];
+      }
+    } else {
+      // Votação tradicional por turma (só pega os candidatos da sala selecionada)
+      const { data } = await supabase.from('students')
+        .select('*')
+        .eq('turma_id', t.id)
+        .eq('is_candidate', true);
+      candidatesData = data || [];
+    }
+
+    // Entrega a lista de candidatos pronta para a Urna (ela não precisa saber como foi filtrada)
+    setTurma({ ...t, candidates: candidatesData });
     setLoadingCandidates(false);
   };
 
