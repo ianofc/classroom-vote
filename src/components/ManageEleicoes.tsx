@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Loader2, PlayCircle, StopCircle, Globe, Users, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Loader2, PlayCircle, StopCircle, Globe, Users, CheckCircle2, Star } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Eleicao {
   id: string;
   nome: string;
   status: string;
-  tipo: 'turma' | 'geral';
+  tipo: 'turma' | 'geral' | 'universal';
   created_at: string;
 }
 
@@ -15,7 +15,7 @@ const ManageEleicoes = () => {
   const [eleicoes, setEleicoes] = useState<Eleicao[]>([]);
   const [loading, setLoading] = useState(false);
   const [newNome, setNewNome] = useState("");
-  const [newTipo, setNewTipo] = useState<'turma' | 'geral'>('turma');
+  const [newTipo, setNewTipo] = useState<'turma' | 'geral' | 'universal'>('universal');
 
   useEffect(() => {
     fetchEleicoes();
@@ -40,7 +40,6 @@ const ManageEleicoes = () => {
       return;
     }
 
-    // REMOVIDA A TRAVA: Agora o sistema permite múltiplas eleições ativas simultaneamente!
     const { data, error } = await supabase
       .from('eleicoes')
       .insert({ nome: newNome.trim(), tipo: newTipo, status: 'ativa' })
@@ -58,8 +57,6 @@ const ManageEleicoes = () => {
 
   const toggleStatus = async (eleicao: Eleicao) => {
     const novoStatus = eleicao.status === 'ativa' ? 'encerrada' : 'ativa';
-    
-    // REMOVIDA A TRAVA: Pode reativar sem desligar as outras
     const { error } = await supabase.from('eleicoes').update({ status: novoStatus }).eq('id', eleicao.id);
     
     if (!error) {
@@ -87,34 +84,33 @@ const ManageEleicoes = () => {
         <p className="text-sm text-slate-500 font-medium">Você pode ter múltiplas eleições ativas simultaneamente. O sistema usará inteligência artificial para decidir em quais delas cada aluno pode votar.</p>
       </div>
 
-      {/* FORMULÁRIO DE NOVA ELEIÇÃO */}
       <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8">
         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Iniciar Novo Pleito</h3>
         <div className="flex flex-col md:flex-row gap-4">
           <input 
             type="text" 
-            placeholder="Nome (Ex: Líder Geral 2026)" 
+            placeholder="Nome (Ex: Jovem Ouvidor, Líder do Campo)" 
             className="flex-1 p-3 border border-slate-300 rounded-lg text-sm font-bold outline-none focus:border-blue-500"
             value={newNome}
             onChange={e => setNewNome(e.target.value)}
           />
           
           <select 
-            className="p-3 border border-slate-300 rounded-lg text-sm font-bold bg-white outline-none focus:border-blue-500"
+            className="p-3 border border-slate-300 rounded-lg text-sm font-bold bg-white outline-none focus:border-blue-500 md:w-[350px]"
             value={newTipo}
-            onChange={(e) => setNewTipo(e.target.value as 'turma' | 'geral')}
+            onChange={(e) => setNewTipo(e.target.value as 'turma' | 'geral' | 'universal')}
           >
-            <option value="geral">Votação Geral (Todos ou Líderes)</option>
-            <option value="turma">Votação por Turma (Interna)</option>
+            <option value="universal">Universal (A escola inteira vota)</option>
+            <option value="geral">Geral Restrita (Só vota quem é do cargo)</option>
+            <option value="turma">Por Turma (Votação interna da sala)</option>
           </select>
 
-          <button onClick={handleAddEleicao} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md">
+          <button onClick={handleAddEleicao} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md whitespace-nowrap">
             <Plus className="w-4 h-4" /> Criar e Ativar
           </button>
         </div>
       </div>
 
-      {/* LISTA DE ELEIÇÕES */}
       <div className="space-y-3">
         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 px-1">Painel de Controle Eleitoral</h3>
         
@@ -136,8 +132,10 @@ const ManageEleicoes = () => {
                     {eleicao.status === 'ativa' && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
                   </h4>
                   <div className="flex items-center gap-3 mt-1">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${eleicao.tipo === 'geral' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {eleicao.tipo === 'geral' ? <span className="flex items-center gap-1"><Globe className="w-3 h-3"/> GERAL (ESCOLA)</span> : <span className="flex items-center gap-1"><Users className="w-3 h-3"/> POR TURMA</span>}
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${eleicao.tipo === 'universal' ? 'bg-green-100 text-green-700' : eleicao.tipo === 'geral' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {eleicao.tipo === 'universal' && <span className="flex items-center gap-1"><Globe className="w-3 h-3"/> UNIVERSAL</span>}
+                      {eleicao.tipo === 'geral' && <span className="flex items-center gap-1"><Star className="w-3 h-3"/> GERAL RESTRITA</span>}
+                      {eleicao.tipo === 'turma' && <span className="flex items-center gap-1"><Users className="w-3 h-3"/> POR TURMA</span>}
                     </span>
                     <span className="text-xs font-bold text-slate-400">
                       {new Date(eleicao.created_at).toLocaleDateString('pt-BR')}
