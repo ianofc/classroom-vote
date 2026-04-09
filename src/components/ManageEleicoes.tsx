@@ -40,10 +40,7 @@ const ManageEleicoes = () => {
       return;
     }
 
-    // Primeiro, desativa todas as outras eleições (só pode haver uma ativa por vez)
-    await supabase.from('eleicoes').update({ status: 'encerrada' }).neq('status', 'encerrada');
-
-    // Cria a nova eleição já ativa e com o tipo selecionado
+    // REMOVIDA A TRAVA: Agora o sistema permite múltiplas eleições ativas simultaneamente!
     const { data, error } = await supabase
       .from('eleicoes')
       .insert({ nome: newNome.trim(), tipo: newTipo, status: 'ativa' })
@@ -55,18 +52,14 @@ const ManageEleicoes = () => {
     } else {
       toast({ title: "Sucesso", description: "Nova eleição iniciada com sucesso!" });
       setNewNome("");
-      fetchEleicoes(); // Recarrega a lista
+      fetchEleicoes();
     }
   };
 
   const toggleStatus = async (eleicao: Eleicao) => {
     const novoStatus = eleicao.status === 'ativa' ? 'encerrada' : 'ativa';
-
-    // Se for ativar uma, garante que as outras sejam encerradas
-    if (novoStatus === 'ativa') {
-      await supabase.from('eleicoes').update({ status: 'encerrada' }).neq('id', eleicao.id);
-    }
-
+    
+    // REMOVIDA A TRAVA: Pode reativar sem desligar as outras
     const { error } = await supabase.from('eleicoes').update({ status: novoStatus }).eq('id', eleicao.id);
     
     if (!error) {
@@ -90,8 +83,8 @@ const ManageEleicoes = () => {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
       <div className="mb-8 border-b border-slate-100 pb-6">
-        <h2 className="text-xl font-black text-slate-800 mb-2">Abertura de Eleições</h2>
-        <p className="text-sm text-slate-500 font-medium">Crie um evento eleitoral. O sistema isola os votos para que você possa ter múltiplas eleições no ano (Ex: Grêmio em Março, Ouvidor em Junho).</p>
+        <h2 className="text-xl font-black text-slate-800 mb-2">Abertura de Eleições (Multitarefa)</h2>
+        <p className="text-sm text-slate-500 font-medium">Você pode ter múltiplas eleições ativas simultaneamente. O sistema usará inteligência artificial para decidir em quais delas cada aluno pode votar.</p>
       </div>
 
       {/* FORMULÁRIO DE NOVA ELEIÇÃO */}
@@ -100,7 +93,7 @@ const ManageEleicoes = () => {
         <div className="flex flex-col md:flex-row gap-4">
           <input 
             type="text" 
-            placeholder="Nome (Ex: Grêmio Estudantil 2026)" 
+            placeholder="Nome (Ex: Líder Geral 2026)" 
             className="flex-1 p-3 border border-slate-300 rounded-lg text-sm font-bold outline-none focus:border-blue-500"
             value={newNome}
             onChange={e => setNewNome(e.target.value)}
@@ -111,22 +104,19 @@ const ManageEleicoes = () => {
             value={newTipo}
             onChange={(e) => setNewTipo(e.target.value as 'turma' | 'geral')}
           >
-            <option value="turma">Votação por Turma (Ex: Líderes de Sala)</option>
-            <option value="geral">Votação Geral (Escola Inteira)</option>
+            <option value="geral">Votação Geral (Todos ou Líderes)</option>
+            <option value="turma">Votação por Turma (Interna)</option>
           </select>
 
           <button onClick={handleAddEleicao} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md">
             <Plus className="w-4 h-4" /> Criar e Ativar
           </button>
         </div>
-        <p className="text-[10px] text-slate-400 mt-3 font-medium uppercase">
-          * Criar uma nova eleição encerrará automaticamente a anterior.
-        </p>
       </div>
 
       {/* LISTA DE ELEIÇÕES */}
       <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 px-1">Histórico de Eleições</h3>
+        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 px-1">Painel de Controle Eleitoral</h3>
         
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
