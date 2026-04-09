@@ -1,134 +1,179 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Pencil, Save, X, Archive, CheckCircle2, Loader2, CheckSquare } from "lucide-react";
+import { Plus, Trash2, Loader2, PlayCircle, StopCircle, Globe, Users, CheckCircle2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
-interface Eleicao { id: string; nome: string; status: string; created_at: string; }
+interface Eleicao {
+  id: string;
+  nome: string;
+  status: string;
+  tipo: 'turma' | 'geral';
+  created_at: string;
+}
 
-export default function ManageEleicoes() {
+const ManageEleicoes = () => {
   const [eleicoes, setEleicoes] = useState<Eleicao[]>([]);
   const [loading, setLoading] = useState(false);
   const [newNome, setNewNome] = useState("");
-  
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editNome, setEditNome] = useState("");
-  const [editStatus, setEditStatus] = useState("");
+  const [newTipo, setNewTipo] = useState<'turma' | 'geral'>('turma');
 
-  useEffect(() => { fetchEleicoes(); }, []);
+  useEffect(() => {
+    fetchEleicoes();
+  }, []);
 
   const fetchEleicoes = async () => {
     setLoading(true);
-    const { data } = await supabase.from('eleicoes').select('*').order('created_at', { ascending: false });
-    if (data) setEleicoes(data);
+    const { data, error } = await supabase
+      .from('eleicoes')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setEleicoes(data);
+    }
     setLoading(false);
   };
 
-  const handleCreate = async () => {
-    if (!newNome.trim()) return;
-    const { data, error } = await supabase.from('eleicoes').insert({ nome: newNome.trim(), status: 'ativa' }).select().single();
+  const handleAddEleicao = async () => {
+    if (!newNome.trim()) {
+      toast({ title: "Atenção", description: "Dê um nome para a eleição.", variant: "destructive" });
+      return;
+    }
+
+    // Primeiro, desativa todas as outras eleições (só pode haver uma ativa por vez)
+    await supabase.from('eleicoes').update({ status: 'encerrada' }).neq('status', 'encerrada');
+
+    // Cria a nova eleição já ativa e com o tipo selecionado
+    const { data, error } = await supabase
+      .from('eleicoes')
+      .insert({ nome: newNome.trim(), tipo: newTipo, status: 'ativa' })
+      .select()
+      .single();
+
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
     } else {
-      setEleicoes([data, ...eleicoes]);
+      toast({ title: "Sucesso", description: "Nova eleição iniciada com sucesso!" });
       setNewNome("");
-      toast({ title: "Sucesso", description: "Eleição criada com sucesso!" });
+      fetchEleicoes(); // Recarrega a lista
     }
   };
 
-  const startEdit = (e: Eleicao) => {
-    setEditingId(e.id);
-    setEditNome(e.nome);
-    setEditStatus(e.status);
+  const toggleStatus = async (eleicao: Eleicao) => {
+    const novoStatus = eleicao.status === 'ativa' ? 'encerrada' : 'ativa';
+
+    // Se for ativar uma, garante que as outras sejam encerradas
+    if (novoStatus === 'ativa') {
+      await supabase.from('eleicoes').update({ status: 'encerrada' }).neq('id', eleicao.id);
+    }
+
+    const { error } = await supabase.from('eleicoes').update({ status: novoStatus }).eq('id', eleicao.id);
+    
+    if (!error) {
+      fetchEleicoes();
+      toast({ title: "Status Atualizado", description: `Eleição ${novoStatus}.` });
+    }
   };
 
-  const handleSaveEdit = async (id: string) => {
-    if (!editNome.trim()) return;
-    const { error } = await supabase.from('eleicoes').update({ nome: editNome.trim(), status: editStatus }).eq('id', id);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
-      setEleicoes(eleicoes.map(e => e.id === id ? { ...e, nome: editNome.trim(), status: editStatus } : e));
-      setEditingId(null);
-      toast({ title: "Sucesso", description: "Eleição atualizada!" });
+  const handleDelete = async (id: string) => {
+    if (!confirm("Atenção! Excluir a eleição apagará TODOS OS VOTOS vinculados a ela na Auditoria. Tem certeza?")) return;
+    
+    await supabase.from('votes').delete().eq('eleicao_id', id);
+    const { error } = await supabase.from('eleicoes').delete().eq('id', id);
+    
+    if (!error) {
+      setEleicoes(eleicoes.filter(e => e.id !== id));
+      toast({ title: "Excluída", description: "Eleição e votos removidos." });
     }
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-      <div className="flex items-center gap-4 mb-6 border-b border-slate-100 pb-6">
-        <div className="p-4 bg-indigo-100 text-indigo-700 rounded-2xl">
-          <CheckSquare className="w-8 h-8" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight">Gestão de Eleições</h2>
-          <p className="text-sm text-slate-500 font-medium mt-1">
-            Crie novos eventos ou encerre os antigos. <strong className="text-red-500">Por segurança, eleições não podem ser apagadas (Histórico).</strong>
-          </p>
-        </div>
+    <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+      <div className="mb-8 border-b border-slate-100 pb-6">
+        <h2 className="text-xl font-black text-slate-800 mb-2">Abertura de Eleições</h2>
+        <p className="text-sm text-slate-500 font-medium">Crie um evento eleitoral. O sistema isola os votos para que você possa ter múltiplas eleições no ano (Ex: Grêmio em Março, Ouvidor em Junho).</p>
       </div>
 
-      <div className="flex gap-3 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-        <input 
-          type="text" 
-          placeholder="Dê um nome (Ex: Eleição Jovem Ouvidor 2026...)" 
-          className="flex-1 p-3.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm"
-          value={newNome} 
-          onChange={e => setNewNome(e.target.value)} 
-        />
-        <button onClick={handleCreate} className="bg-indigo-600 text-white px-6 rounded-xl hover:bg-indigo-700 transition-all shadow-lg font-bold text-sm flex items-center gap-2">
-          <Plus className="w-5 h-5" /> Criar Evento
-        </button>
+      {/* FORMULÁRIO DE NOVA ELEIÇÃO */}
+      <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Iniciar Novo Pleito</h3>
+        <div className="flex flex-col md:flex-row gap-4">
+          <input 
+            type="text" 
+            placeholder="Nome (Ex: Grêmio Estudantil 2026)" 
+            className="flex-1 p-3 border border-slate-300 rounded-lg text-sm font-bold outline-none focus:border-blue-500"
+            value={newNome}
+            onChange={e => setNewNome(e.target.value)}
+          />
+          
+          <select 
+            className="p-3 border border-slate-300 rounded-lg text-sm font-bold bg-white outline-none focus:border-blue-500"
+            value={newTipo}
+            onChange={(e) => setNewTipo(e.target.value as 'turma' | 'geral')}
+          >
+            <option value="turma">Votação por Turma (Ex: Líderes de Sala)</option>
+            <option value="geral">Votação Geral (Escola Inteira)</option>
+          </select>
+
+          <button onClick={handleAddEleicao} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md">
+            <Plus className="w-4 h-4" /> Criar e Ativar
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-400 mt-3 font-medium uppercase">
+          * Criar uma nova eleição encerrará automaticamente a anterior.
+        </p>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
-      ) : (
-        <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-          {eleicoes.map(eleicao => (
-            <div key={eleicao.id} className="flex flex-col md:flex-row md:items-center justify-between p-5 border border-slate-200 rounded-2xl bg-white shadow-sm gap-4 hover:border-indigo-300 transition-colors">
-              {editingId === eleicao.id ? (
-                <div className="flex flex-1 flex-col md:flex-row gap-3 w-full">
-                  <input 
-                    type="text" 
-                    className="flex-1 p-3 border border-indigo-300 outline-none text-sm font-bold text-slate-800 bg-indigo-50/50 rounded-xl" 
-                    value={editNome} 
-                    onChange={e => setEditNome(e.target.value)} 
-                  />
-                  <select 
-                    className="p-3 border border-slate-300 rounded-xl text-sm font-bold outline-none bg-white"
-                    value={editStatus}
-                    onChange={e => setEditStatus(e.target.value)}
-                  >
-                    <option value="ativa">🟢 STATUS: ATIVA</option>
-                    <option value="encerrada">🔴 STATUS: ENCERRADA</option>
-                  </select>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleSaveEdit(eleicao.id)} className="flex-1 md:flex-none bg-green-600 text-white px-5 py-3 rounded-xl hover:bg-green-700 font-bold flex items-center justify-center gap-2 shadow-md"><Save className="w-4 h-4" /></button>
-                    <button onClick={() => setEditingId(null)} className="flex-1 md:flex-none bg-slate-200 text-slate-600 px-5 py-3 rounded-xl hover:bg-slate-300 font-bold flex items-center justify-center gap-2"><X className="w-4 h-4" /></button>
+      {/* LISTA DE ELEIÇÕES */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 px-1">Histórico de Eleições</h3>
+        
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
+        ) : eleicoes.length === 0 ? (
+          <p className="text-center text-sm text-slate-400 py-8">Nenhuma eleição registada.</p>
+        ) : (
+          eleicoes.map(eleicao => (
+            <div key={eleicao.id} className={`p-5 rounded-xl border flex flex-col md:flex-row items-center justify-between gap-4 transition-all ${eleicao.status === 'ativa' ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white border-slate-200'}`}>
+              
+              <div className="flex items-center gap-4 w-full md:w-auto">
+                <div className={`p-3 rounded-full ${eleicao.status === 'ativa' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-100 text-slate-400'}`}>
+                  {eleicao.status === 'ativa' ? <PlayCircle className="w-6 h-6 animate-pulse" /> : <StopCircle className="w-6 h-6" />}
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-800 text-lg flex items-center gap-2">
+                    {eleicao.nome} 
+                    {eleicao.status === 'ativa' && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                  </h4>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${eleicao.tipo === 'geral' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {eleicao.tipo === 'geral' ? <span className="flex items-center gap-1"><Globe className="w-3 h-3"/> GERAL (ESCOLA)</span> : <span className="flex items-center gap-1"><Users className="w-3 h-3"/> POR TURMA</span>}
+                    </span>
+                    <span className="text-xs font-bold text-slate-400">
+                      {new Date(eleicao.created_at).toLocaleDateString('pt-BR')}
+                    </span>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div>
-                    <h3 className="font-black text-slate-800 text-lg uppercase tracking-tight">{eleicao.nome}</h3>
-                    <p className="text-xs text-slate-400 font-bold mt-1 tracking-widest uppercase">ID: {eleicao.id.split('-')[0]} • Criada em {new Date(eleicao.created_at).toLocaleDateString('pt-BR')}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm ${eleicao.status === 'ativa' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
-                      {eleicao.status === 'ativa' ? <CheckCircle2 className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
-                      {eleicao.status}
-                    </span>
-                    <button onClick={() => startEdit(eleicao)} className="text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 p-2.5 rounded-xl transition-colors border border-slate-200 hover:border-indigo-200 shadow-sm">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  </div>
-                </>
-              )}
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0 border-slate-200">
+                <button 
+                  onClick={() => toggleStatus(eleicao)} 
+                  className={`text-xs font-bold px-4 py-2 rounded-lg transition-colors ${eleicao.status === 'ativa' ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                >
+                  {eleicao.status === 'ativa' ? 'Encerrar Eleição' : 'Reativar'}
+                </button>
+                <button onClick={() => handleDelete(eleicao.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+
             </div>
-          ))}
-          {eleicoes.length === 0 && <p className="text-center text-sm text-slate-400 font-medium py-12 border-2 border-dashed border-slate-200 rounded-2xl">Nenhuma eleição criada ainda. Crie a primeira para começar!</p>}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   );
-}
+};
+
+export default ManageEleicoes;
