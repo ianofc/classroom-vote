@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Turma, Student } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Edit2, Users, FileSpreadsheet, Loader2, Save, X, UserPlus, FileDown, UploadCloud, Tag } from "lucide-react";
+import { Plus, Trash2, Edit2, Users, Loader2, Save, X, UserPlus, UploadCloud, Tag, Printer, Contact2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import Papa from 'papaparse';
 
@@ -19,10 +19,11 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [escolaId, setEscolaId] = useState<string | null>(null);
+  const [escolaNome, setEscolaNome] = useState("Instituição");
 
-  // NOVO SISTEMA DE TAGS DE CARGOS PARA O ALUNO
   const [studentTags, setStudentTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [isPrintingCard, setIsPrintingCard] = useState(false);
 
   useEffect(() => { fetchTurmas(); }, []);
 
@@ -30,10 +31,21 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     if (userData?.user) {
-      const { data: adminData } = await supabase.from('admins').select('escola_id').eq('auth_id', userData.user.id).single();
-      if (adminData?.escola_id) {
-        setEscolaId(adminData.escola_id);
-        const { data } = await supabase.from('turmas').select('*').eq('escola_id', adminData.escola_id).order('name');
+      const { data: adminData } = await supabase.from('admins').select('escolas(id, nome)').eq('auth_id', userData.user.id).single();
+      
+      let eId = null;
+      let eNome = "Instituição";
+      
+      if (adminData?.escolas) {
+        const escolaData = Array.isArray(adminData.escolas) ? adminData.escolas[0] : adminData.escolas;
+        eId = escolaData?.id;
+        eNome = escolaData?.nome || "Instituição";
+      }
+
+      if (eId) {
+        setEscolaId(eId);
+        setEscolaNome(eNome);
+        const { data } = await supabase.from('turmas').select('*').eq('escola_id', eId).order('name');
         setTurmas(data || []);
       }
     }
@@ -96,10 +108,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
 
   const handleSaveStudent = async () => {
     if (!newStudent.name.trim() || !selectedTurma) return;
-    
-    // Junta as tags com vírgula para salvar no banco
     const cargosFinal = studentTags.join(', ');
-
     const payload = {
       turma_id: selectedTurma.id,
       name: newStudent.name,
@@ -135,7 +144,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       candidate_number: s.candidate_number?.toString() || "",
       vice_name: s.vice_name || ""
     });
-    // Separa a string do banco em tags visuais
     setStudentTags(s.candidate_role ? s.candidate_role.split(',').map(r => r.trim()) : []);
     setEditingStudentId(s.id!);
   };
@@ -152,11 +160,9 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedTurma) return;
-
     setLoading(true);
     Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
+      header: true, skipEmptyLines: true,
       complete: async (results) => {
         const rows = results.data as any[];
         const formattedStudents = rows.map(row => ({
@@ -179,17 +185,84 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     });
   };
 
+  // ========================================================================
+  // GERADOR DE SANTINHOS (CANDIDATE CARDS)
+  // ========================================================================
+  const printCandidateCard = (candidate: Student) => {
+    setIsPrintingCard(true);
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    
+    const cargosList = candidate.candidate_role ? candidate.candidate_role.split(',') : [];
+    // Pega o primeiro cargo para destaque no card
+    const primaryRole = cargosList.length > 0 ? escapeHtml(cargosList[0].trim()) : "Candidato";
+    
+    const cardHtml = `
+      <html>
+        <head>
+          <title>Cartão de Candidato - ${escapeHtml(candidate.name)}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f4f4f5; }
+            .card { width: 350px; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border: 2px solid #e2e8f0; }
+            .header { background: linear-gradient(135deg, #1d4ed8, #1e3a8a); padding: 30px 20px; text-align: center; color: white; position: relative; }
+            .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 6px; background: #ef4444; }
+            .school { font-size: 10px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #93c5fd; margin-bottom: 5px; }
+            .role { font-size: 22px; font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1.1; }
+            .turma { font-size: 12px; font-weight: bold; background: rgba(255,255,255,0.2); display: inline-block; padding: 4px 12px; border-radius: 20px; margin-top: 10px; }
+            .body { padding: 30px 20px; text-align: center; background: white; }
+            .number-box { background: #f8fafc; border: 3px solid #cbd5e1; border-radius: 16px; display: inline-block; padding: 10px 30px; margin-bottom: 20px; }
+            .number-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: -5px; }
+            .number { font-size: 56px; font-weight: 900; color: #0f172a; margin: 0; line-height: 1; }
+            .name { font-size: 24px; font-weight: 900; color: #1e293b; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; }
+            .vice { font-size: 14px; color: #64748b; font-weight: bold; margin: 0; }
+            .footer { background: #0f172a; color: #94a3b8; text-align: center; padding: 15px; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+            @media print {
+              body { background: white; display: block; }
+              .card { box-shadow: none; border: 2px solid #ccc; margin: 0 auto; page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="header">
+              <div class="school">${escapeHtml(escolaNome)}</div>
+              <h1 class="role">${primaryRole}</h1>
+              <div class="turma">Turma: ${escapeHtml(selectedTurma?.name || '')}</div>
+            </div>
+            <div class="body">
+              <div class="number-box">
+                <span class="number-label">Vote</span>
+                <p class="number">${candidate.candidate_number}</p>
+              </div>
+              <h2 class="name">${escapeHtml(candidate.name)}</h2>
+              ${candidate.vice_name ? `<p class="vice">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}
+            </div>
+            <div class="footer">
+              Sistema Oficial de Votação<br/>Identidade Digital Autenticada
+            </div>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank", "width=500,height=700");
+    if (printWindow) {
+      printWindow.document.write(cardHtml);
+      printWindow.document.close();
+      setTimeout(() => { setIsPrintingCard(false); }, 1000);
+    } else {
+      setIsPrintingCard(false);
+    }
+  };
+
   return (
     <div className="flex flex-col md:flex-row gap-6">
-      {/* LATERAL ESQUERDA: LISTA DE TURMAS */}
       <div className="w-full md:w-1/3 bg-slate-50 p-4 rounded-xl border border-slate-200 h-fit">
         <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-4"><Users className="w-4 h-4"/> Turmas Cadastradas</h3>
-        
         <div className="flex gap-2 mb-4">
           <input type="text" placeholder="Nova Turma" className="w-full p-2 text-sm border rounded outline-none focus:border-blue-500" value={newTurmaName} onChange={e => setNewTurmaName(e.target.value)} />
           <button onClick={handleAddTurma} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700"><Plus className="w-4 h-4" /></button>
         </div>
-
         <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
           {turmas.map(t => (
             <div key={t.id} className={`flex justify-between items-center p-3 rounded-lg border cursor-pointer transition-colors ${selectedTurma?.id === t.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-slate-100'}`} onClick={() => selectTurma(t)}>
@@ -200,7 +273,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
         </div>
       </div>
 
-      {/* LATERAL DIREITA: GESTÃO DE ALUNOS */}
       <div className="w-full md:w-2/3">
         {selectedTurma ? (
           <div className="space-y-6">
@@ -212,40 +284,29 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
               </label>
             </div>
 
-            {/* FORMULÁRIO DO ALUNO COM O NOVO SISTEMA DE TAGS */}
             <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm">
-              <h3 className="text-xs font-bold uppercase text-slate-400 mb-4">{editingStudentId ? "Editar Aluno" : "Cadastrar Manualmente"}</h3>
+              <h3 className="text-xs font-bold uppercase text-slate-400 mb-4">{editingStudentId ? "Editar Identidade Digital" : "Cadastrar Manualmente"}</h3>
               <div className="space-y-4">
                 <input type="text" placeholder="Nome Completo" className="w-full p-3 border border-slate-200 rounded bg-slate-50 text-sm font-bold" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} />
                 
                 <label className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-lg cursor-pointer">
                   <input type="checkbox" className="w-5 h-5 accent-blue-600" checked={newStudent.is_candidate} onChange={e => setNewStudent({...newStudent, is_candidate: e.target.checked})} />
-                  <span className="text-sm font-black text-blue-900 uppercase">ESTE ALUNO É CANDIDATO OU POSSUI CARGO</span>
+                  <span className="text-sm font-black text-blue-900 uppercase">ESTE ALUNO TEM CARGO / É CANDIDATO</span>
                 </label>
 
                 {newStudent.is_candidate && (
                   <div className="bg-white p-4 border-2 border-blue-100 rounded-xl space-y-4 animate-in fade-in">
                     <div className="grid grid-cols-2 gap-4">
-                      <input type="number" placeholder="Nº da Chapa (Ex: 10)" className="p-3 border rounded bg-slate-50 text-sm font-bold" value={newStudent.candidate_number} onChange={e => setNewStudent({...newStudent, candidate_number: e.target.value})} />
+                      <input type="number" placeholder="Nº de Urna (Ex: 10)" className="p-3 border rounded bg-slate-50 text-sm font-bold" value={newStudent.candidate_number} onChange={e => setNewStudent({...newStudent, candidate_number: e.target.value})} />
                       <input type="text" placeholder="Nome do Vice (Opcional)" className="p-3 border rounded bg-slate-50 text-sm" value={newStudent.vice_name} onChange={e => setNewStudent({...newStudent, vice_name: e.target.value})} />
                     </div>
 
-                    {/* SISTEMA DE TAGS */}
                     <div className="pt-2 border-t border-slate-100">
-                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Cargos / Segmentos do Aluno</p>
-                      
+                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Perfis Vinculados (Tags)</p>
                       <div className="flex gap-2 mb-3">
-                        <input 
-                          type="text" 
-                          placeholder="Ex: Jovem Ouvidor LGBT" 
-                          className="flex-1 p-2 border rounded text-sm outline-none focus:border-blue-500" 
-                          value={tagInput} 
-                          onChange={e => setTagInput(e.target.value)}
-                          onKeyDown={(e) => { if(e.key === 'Enter') handleAddTag() }}
-                        />
+                        <input type="text" placeholder="Ex: Jovem Ouvidor LGBT" className="flex-1 p-2 border rounded text-sm outline-none focus:border-blue-500" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter') handleAddTag() }} />
                         <button onClick={handleAddTag} className="bg-slate-800 text-white px-3 py-2 rounded text-xs font-bold hover:bg-slate-700">Adicionar</button>
                       </div>
-
                       <div className="flex flex-wrap gap-2">
                         {studentTags.length === 0 && <span className="text-xs text-slate-400 italic">Nenhum cargo adicionado.</span>}
                         {studentTags.map((tag, i) => (
@@ -262,7 +323,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                 <div className="flex gap-2 pt-2">
                   <button onClick={handleSaveStudent} className="flex-1 bg-slate-900 text-white py-3 rounded-lg font-bold text-sm hover:bg-slate-800 flex items-center justify-center gap-2">
                     {editingStudentId ? <Save className="w-4 h-4"/> : <UserPlus className="w-4 h-4"/>} 
-                    {editingStudentId ? "SALVAR ALTERAÇÕES" : "CADASTRAR ALUNO"}
+                    {editingStudentId ? "ATUALIZAR PERFIL" : "CRIAR IDENTIDADE"}
                   </button>
                   {editingStudentId && (
                     <button onClick={resetForm} className="bg-slate-200 text-slate-700 px-4 rounded-lg font-bold hover:bg-slate-300">Cancelar</button>
@@ -271,20 +332,22 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
               </div>
             </div>
 
-            {/* LISTAGEM DE ALUNOS */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="bg-slate-50 p-3 border-b border-slate-200"><h3 className="text-xs font-bold uppercase text-slate-500">Lista da Turma ({students.length})</h3></div>
+              <div className="bg-slate-50 p-3 border-b border-slate-200"><h3 className="text-xs font-bold uppercase text-slate-500">Cidadãos Registrados ({students.length})</h3></div>
               <div className="max-h-[400px] overflow-y-auto">
                 {loading ? (
                   <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
                 ) : students.length === 0 ? (
-                  <div className="text-center p-8 text-sm text-slate-400">Nenhum aluno cadastrado.</div>
+                  <div className="text-center p-8 text-sm text-slate-400">Nenhum perfil criado nesta turma.</div>
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {students.map(s => (
                       <div key={s.id} className="p-4 hover:bg-slate-50 flex items-center justify-between group">
                         <div>
-                          <p className="font-bold text-slate-800">{s.name}</p>
+                          <p className="font-bold text-slate-800 flex items-center gap-2">
+                            {s.is_candidate && <Contact2 className="w-4 h-4 text-blue-500" />}
+                            {s.name}
+                          </p>
                           {s.is_candidate && s.candidate_role && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {s.candidate_role.split(',').map((tag, i) => (
@@ -292,10 +355,22 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                                   {tag.trim()}
                                 </span>
                               ))}
+                              {s.candidate_number && (
+                                <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded-md">
+                                  Nº {s.candidate_number}
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
+                        
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* BOTÃO MÁGICO DO SANTINHO */}
+                          {s.is_candidate && (
+                            <button onClick={() => printCandidateCard(s)} title="Imprimir Cartão de Campanha" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-2 transition-colors">
+                              <Printer className="w-4 h-4"/>
+                            </button>
+                          )}
                           <button onClick={() => startEditStudent(s)} className="p-2 text-blue-500 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4"/></button>
                           <button onClick={() => handleDeleteStudent(s.id!)} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
                         </div>
@@ -310,7 +385,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
           <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl p-10 bg-slate-50/50">
             <Users className="w-12 h-12 mb-4 opacity-50" />
             <p className="font-medium text-lg">Selecione uma turma ao lado</p>
-            <p className="text-sm">para gerenciar os seus alunos e candidatos.</p>
+            <p className="text-sm">para gerir as Identidades Digitais.</p>
           </div>
         )}
       </div>
