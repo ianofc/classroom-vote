@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { CheckCircle2 } from "lucide-react";
 
 interface UrnaProps {
-  turma: any; // Agora recebe o urnaPayload (Turma + Eleições Permitidas)
+  turma: any; // Agora é o urnaPayload (Turma + Eleições Permitidas + Todos Candidatos)
   onVoteConfirmed: (votes: any[]) => void;
   onBack: () => void;
 }
@@ -14,26 +14,39 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
   const [showEndAnim, setShowEndAnim] = useState(false);
   const [receiptHash, setReceiptHash] = useState("");
 
-  // A sequência mágica de votação agora vem do Index (baseada no perfil do aluno)
-  const rolesSequence = useMemo(() => {
-    if (turma.allowedRoles && turma.allowedRoles.length > 0) {
-      return turma.allowedRoles as string[];
-    }
-    // Fallback de segurança
-    const roles = Array.from(new Set(turma.candidates.map((c: any) => c.candidate_role || 'Líder Geral')));
-    return (roles.length > 0 ? roles : ['Líder Geral']) as string[];
-  }, [turma]);
+  // A sequência de eleições que este eleitor específico tem direito
+  const electionsSequence = turma.allowedElections || [];
+  const currentElection = electionsSequence[currentRoleIndex];
 
-  const currentRole = rolesSequence[currentRoleIndex];
-
-  // Busca o candidato na lista global que bate com o número digitado e com o cargo da tela atual
+  // ==================================================================
+  // O FILTRO DE OURO: Validação Dinâmica de Candidatos Múltiplos
+  // ==================================================================
   const candidate = useMemo(() => {
-    if (digits.length === 0) return null;
-    return turma.candidates.find((c: any) => 
-      c.candidate_number === parseInt(digits) && 
-      (c.candidate_role === currentRole || (!c.candidate_role && currentRole === 'Líder Geral'))
-    );
-  }, [digits, currentRole, turma.candidates]);
+    if (digits.length === 0 || !currentElection) return null;
+    
+    return turma.candidates.find((c: any) => {
+      // 1. O número digitado tem que bater
+      if (c.candidate_number !== parseInt(digits)) return false;
+      
+      // 2. Fatiador de Cargos do Candidato ("Líder de Turma, Jovem Ouvidor")
+      const candRoles = c.candidate_role 
+        ? c.candidate_role.split(',').map((r: string) => r.trim().toLowerCase()) 
+        : [];
+      
+      // 3. O candidato está a concorrer a ESTE cargo que está na tela?
+      const isCompetingForThis = candRoles.includes(currentElection.nome.toLowerCase());
+      if (!isCompetingForThis) return false;
+
+      // 4. REGRA DA TURMA: Se a eleição na tela for tipo 'turma', 
+      // o sistema IMPEDE que um aluno de outra turma seja reconhecido!
+      if (currentElection.tipo === 'turma') {
+         if (c.turma_id !== turma.id) return false; 
+      }
+      
+      // Se passou por toda a segurança, exibe a foto do candidato!
+      return true;
+    });
+  }, [digits, currentElection, turma.candidates, turma.id]);
 
   // Efeitos Sonoros Oficiais da Urna
   const playUrnaSound = (type: 'key' | 'end') => {
@@ -87,7 +100,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
 
   const handleBranco = () => {
     playUrnaSound('key');
-    processVote({ role: currentRole, number: null, type: 'branco' });
+    processVote({ role: currentElection.nome, number: null, type: 'branco' });
   };
 
   const handleConfirma = () => {
@@ -95,7 +108,7 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
     
     const voteType = candidate ? 'candidate' : 'nulo';
     processVote({ 
-      role: currentRole, 
+      role: currentElection.nome, 
       number: parseInt(digits), 
       type: voteType 
     });
@@ -104,22 +117,18 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
   const processVote = (voteData: any) => {
     const newVotes = [...votesArray, voteData];
     
-    // Se ainda houver mais eleições para este eleitor votar...
-    if (currentRoleIndex < rolesSequence.length - 1) {
+    if (currentRoleIndex < electionsSequence.length - 1) {
       playUrnaSound('key');
       setVotesArray(newVotes);
       setCurrentRoleIndex(currentRoleIndex + 1);
       setDigits("");
     } else {
-      // É o último voto! Toca o som de FIM e gera o recibo
       playUrnaSound('end');
       setReceiptHash(Math.random().toString(36).substring(2, 10).toUpperCase());
       setShowEndAnim(true);
       
-      // O FIM agora dura 4 segundos para dar tempo de ler o protocolo
       setTimeout(() => {
         onVoteConfirmed(newVotes);
-        // Reseta tudo silenciosamente após o FIM
         setVotesArray([]);
         setCurrentRoleIndex(0);
         setDigits("");
@@ -128,11 +137,12 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
     }
   };
 
+  if (!currentElection) return null;
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-4">
       <div className="w-full max-w-4xl bg-slate-200 p-6 md:p-10 rounded-xl shadow-2xl flex flex-col md:flex-row gap-8 border-4 border-slate-300">
         
-        {/* TELA DA URNA */}
         <div className="flex-1 bg-white border-4 border-slate-300 rounded-lg p-6 relative min-h-[400px] shadow-inner overflow-hidden">
           
           {showEndAnim ? (
@@ -143,8 +153,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
                   <CheckCircle2 className="w-6 h-6" /> Voto Computado
                 </p>
               </div>
-              
-              {/* O Recibo Criptográfico Oficial */}
               <div className="absolute bottom-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                   Protocolo Criptográfico de Segurança
@@ -159,8 +167,11 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
               <div className="mb-6">
                 <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Seu voto para</p>
                 <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter border-b-2 border-slate-800 pb-2 inline-block">
-                  {currentRole}
+                  {currentElection.nome}
                 </h2>
+                {currentElection.tipo === 'turma' && (
+                   <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Candidatos limitados à sua turma</p>
+                )}
               </div>
 
               <div className="flex-1 flex gap-6">
@@ -195,7 +206,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
                   </div>
                 </div>
 
-                {/* Retrato do Candidato (Silhueta genérica) */}
                 <div className="w-32 h-40 border-2 border-slate-800 flex flex-col items-center justify-end bg-slate-100 p-2 shadow-inner">
                   <div className="w-20 h-24 bg-slate-300 rounded-t-full border-2 border-slate-400 mb-2"></div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase text-center w-full truncate border-t border-slate-300 pt-1">
@@ -215,7 +225,6 @@ const Urna = ({ turma, onVoteConfirmed, onBack }: UrnaProps) => {
           )}
         </div>
 
-        {/* TECLADO DA URNA */}
         <div className="w-full md:w-80 bg-slate-800 p-6 md:p-8 rounded-xl shadow-2xl border-b-8 border-slate-900 flex flex-col gap-6">
           <div className="grid grid-cols-3 gap-3 md:gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
