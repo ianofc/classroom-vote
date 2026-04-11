@@ -1,6 +1,7 @@
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Loader2, PlayCircle, StopCircle, Globe, Users, CheckCircle2, Star, Tags } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, PlayCircle, StopCircle, Globe, Users, CheckCircle2, Star, Tags, Save, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Eleicao {
@@ -8,16 +9,18 @@ interface Eleicao {
   nome: string;
   status: string;
   tipo: 'turma' | 'geral' | 'universal';
-  cargos: string; // A NOVA COLUNA DE SEGMENTOS
+  cargos: string;
   created_at: string;
 }
 
 const ManageEleicoes = () => {
   const [eleicoes, setEleicoes] = useState<Eleicao[]>([]);
   const [loading, setLoading] = useState(false);
+  
   const [newNome, setNewNome] = useState("");
-  const [newCargos, setNewCargos] = useState(""); // Novo estado para os segmentos
+  const [newCargos, setNewCargos] = useState("");
   const [newTipo, setNewTipo] = useState<'turma' | 'geral' | 'universal'>('universal');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchEleicoes();
@@ -34,31 +37,48 @@ const ManageEleicoes = () => {
     setLoading(false);
   };
 
-  const handleAddEleicao = async () => {
+  const handleSaveEleicao = async () => {
     if (!newNome.trim() || !newCargos.trim()) {
-      toast({ title: "Atenção", description: "Preencha o nome da eleição e os cargos em disputa.", variant: "destructive" });
+      toast({ title: "Atenção", description: "Preencha todos os campos.", variant: "destructive" });
       return;
     }
 
-    const { data, error } = await supabase
-      .from('eleicoes')
-      .insert({ 
-        nome: newNome.trim(), 
-        tipo: newTipo, 
-        status: 'ativa',
-        cargos: newCargos.trim() // Salva os segmentos
-      })
-      .select()
-      .single();
+    const payload = { nome: newNome.trim(), tipo: newTipo, cargos: newCargos.trim() };
 
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (editingId) {
+       const { error } = await supabase.from('eleicoes').update(payload).eq('id', editingId);
+       if (error) {
+         toast({ title: "Erro", description: error.message, variant: "destructive" });
+       } else {
+         toast({ title: "Eleição Atualizada!" });
+         cancelEdit();
+         fetchEleicoes();
+       }
     } else {
-      toast({ title: "Sucesso", description: "Nova eleição em lote iniciada!" });
-      setNewNome("");
-      setNewCargos("");
-      fetchEleicoes();
+       const { error } = await supabase.from('eleicoes').insert({ ...payload, status: 'ativa' });
+       if (error) {
+         toast({ title: "Erro", description: error.message, variant: "destructive" });
+       } else {
+         toast({ title: "Eleição Criada!" });
+         cancelEdit();
+         fetchEleicoes();
+       }
     }
+  };
+
+  const startEdit = (e: Eleicao) => {
+      setNewNome(e.nome);
+      setNewTipo(e.tipo);
+      setNewCargos(e.cargos || "");
+      setEditingId(e.id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+      setNewNome("");
+      setNewTipo("universal");
+      setNewCargos("");
+      setEditingId(null);
   };
 
   const toggleStatus = async (eleicao: Eleicao) => {
@@ -87,8 +107,10 @@ const ManageEleicoes = () => {
         <p className="text-sm text-slate-500 font-medium">Crie uma Eleição Mestra e defina todos os segmentos que pertencem a ela. A urna exibirá os cargos em sequência automaticamente.</p>
       </div>
 
-      <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Iniciar Novo Pleito</h3>
+      <div className={`bg-slate-50 p-6 rounded-xl border mb-8 transition-all ${editingId ? 'border-blue-300 ring-4 ring-blue-50' : 'border-slate-200'}`}>
+        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
+          {editingId ? "Editar Eleição" : "Iniciar Novo Pleito"}
+        </h3>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col md:flex-row gap-4">
             <input 
@@ -113,16 +135,26 @@ const ManageEleicoes = () => {
             <div className="flex-1 w-full">
               <input 
                 type="text" 
-                placeholder="Cargos em disputa separados por vírgula (Ex: Jovem Ouvidor Geral, Jovem Ouvidor do Campo, Jovem Ouvidor LGBT)" 
+                placeholder="Cargos em disputa separados por vírgula (Ex: Jovem Ouvidor Geral, Jovem Ouvidor LGBT)" 
                 className="w-full p-3 border border-slate-300 rounded-lg text-sm font-bold outline-none focus:border-blue-500"
                 value={newCargos}
                 onChange={e => setNewCargos(e.target.value)}
               />
-              <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold ml-1 flex items-center gap-1"><Tags className="w-3 h-3"/> Digite os segmentos separados por vírgula.</p>
+              <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold ml-1 flex items-center gap-1">
+                <Tags className="w-3 h-3"/> Digite os segmentos separados por vírgula.
+              </p>
             </div>
-            <button onClick={handleAddEleicao} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md whitespace-nowrap w-full md:w-auto">
-              <Plus className="w-4 h-4" /> Criar Eleição
-            </button>
+            <div className="flex gap-2 w-full md:w-auto">
+              {editingId && (
+                <button onClick={cancelEdit} className="bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold text-sm hover:bg-slate-300 transition-colors">
+                  <X className="w-4 h-4"/>
+                </button>
+              )}
+              <button onClick={handleSaveEleicao} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-md whitespace-nowrap">
+                {editingId ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />} 
+                {editingId ? "Salvar Alterações" : "Criar Eleição"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -130,8 +162,12 @@ const ManageEleicoes = () => {
       <div className="space-y-3">
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
-        ) : eleicoes.map(eleicao => (
+        ) : eleicoes.length === 0 ? (
+          <p className="text-center text-sm text-slate-400 py-8">Nenhuma eleição registada.</p>
+        ) : (
+          eleicoes.map(eleicao => (
             <div key={eleicao.id} className={`p-5 rounded-xl border flex flex-col md:flex-row items-center justify-between gap-4 transition-all ${eleicao.status === 'ativa' ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white border-slate-200'}`}>
+              
               <div className="flex items-center gap-4 w-full md:w-auto">
                 <div className={`p-3 rounded-full ${eleicao.status === 'ativa' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-100 text-slate-400'}`}>
                   {eleicao.status === 'ativa' ? <PlayCircle className="w-6 h-6 animate-pulse" /> : <StopCircle className="w-6 h-6" />}
@@ -147,21 +183,31 @@ const ManageEleicoes = () => {
                       {eleicao.tipo === 'geral' && <span className="flex items-center gap-1"><Star className="w-3 h-3"/> GERAL RESTRITA</span>}
                       {eleicao.tipo === 'turma' && <span className="flex items-center gap-1"><Users className="w-3 h-3"/> POR TURMA</span>}
                     </span>
-                    {/* MOSTRAMOS OS SEGMENTOS COMO TAGS */}
                     {eleicao.cargos?.split(',').map((c, i) => (
                       <span key={i} className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md font-bold uppercase border border-slate-300">{c.trim()}</span>
                     ))}
                   </div>
                 </div>
               </div>
+
               <div className="flex items-center gap-2 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0 border-slate-200">
-                <button onClick={() => toggleStatus(eleicao)} className={`text-xs font-bold px-4 py-2 rounded-lg transition-colors ${eleicao.status === 'ativa' ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
+                <button 
+                  onClick={() => toggleStatus(eleicao)} 
+                  className={`text-xs font-bold px-4 py-2 rounded-lg transition-colors ${eleicao.status === 'ativa' ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                >
                   {eleicao.status === 'ativa' ? 'Encerrar' : 'Reativar'}
                 </button>
-                <button onClick={() => handleDelete(eleicao.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-5 h-5" /></button>
+                <button onClick={() => startEdit(eleicao)} className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors">
+                  <Edit2 className="w-5 h-5" />
+                </button>
+                <button onClick={() => handleDelete(eleicao.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                  <Trash2 className="w-5 h-5" />
+                </button>
               </div>
+
             </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
