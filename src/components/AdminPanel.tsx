@@ -18,7 +18,6 @@ interface ExtendedVoteRecord {
   id?: string; turma_id?: string; eleicao_id?: string; voter_name: string;
   candidate_role: string; candidate_number: number | null; vote_type: "candidate" | "branco" | "nulo"; created_at?: string;
 }
-
 interface AdminLog { id: string; admin_email: string; acao: string; detalhes: string; created_at: string; }
 
 type Tab = "apuracao" | "reports" | "midias" | "eleicoes" | "turmas" | "admins" | "perfil" | "logs";
@@ -32,7 +31,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [validadeStr, setValidadeStr] = useState("");
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
-  
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("apuracao");
   const [isPrinting, setIsPrinting] = useState(false);
@@ -50,7 +48,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   
   const [filters, setFilters] = useState({ search: "", turmaId: turma ? turma.id : "", eleicaoId: "", voteType: "", date: "" });
   
-  // FILTROS DE APURAÇÃO INTELIGENTE
   const [apuracaoEleicaoId, setApuracaoEleicaoId] = useState("");
   const [apuracaoTurmaId, setApuracaoTurmaId] = useState("");
   const [midiaSearch, setMidiaSearch] = useState("");
@@ -64,10 +61,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       while (fetchMore) {
         const { data, error } = await supabase.from(tableName).select('*').range(from, from + step - 1);
         if (error) { toast({ title: `Erro a buscar dados`, description: error.message, variant: "destructive" }); break; }
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-          if (data.length < step) fetchMore = false; else from += step;
-        } else { fetchMore = false; }
+        if (data && data.length > 0) { allData = [...allData, ...data]; if (data.length < step) fetchMore = false; else from += step; } else { fetchMore = false; }
       }
       return allData;
     };
@@ -79,10 +73,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         let escolaData = null;
         if (adminData?.escolas && !Array.isArray(adminData.escolas)) escolaData = adminData.escolas as any;
         else if (adminData?.escolas && Array.isArray(adminData.escolas)) escolaData = adminData.escolas[0] as any;
-
         if (escolaData) {
-           setEscolaNome(escolaData.nome);
-           if (escolaData.logo_url) setEscolaLogo(escolaData.logo_url);
+           setEscolaNome(escolaData.nome); if (escolaData.logo_url) setEscolaLogo(escolaData.logo_url);
            if (escolaData.valid_until) {
              const dataValidade = new Date(escolaData.valid_until);
              setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
@@ -99,22 +91,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       const sortedVotes = votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) as ExtendedVoteRecord[];
       setAllVotes(sortedVotes);
       if (studentsData) setAllStudents(studentsData);
-      
-      if (turmasData) {
-        const sortedTurmas = turmasData.sort((a, b) => a.name.localeCompare(b.name));
-        setAllTurmas(sortedTurmas);
-        if (!apuracaoTurmaId && sortedTurmas.length > 0) setApuracaoTurmaId(sortedTurmas[0].id);
-      }
-      
+      if (turmasData) { const sortedTurmas = turmasData.sort((a, b) => a.name.localeCompare(b.name)); setAllTurmas(sortedTurmas); if (!apuracaoTurmaId && sortedTurmas.length > 0) setApuracaoTurmaId(sortedTurmas[0].id); }
       if (candidatesRes.data) setAllCandidates(candidatesRes.data);
       if (logsData.data) setSystemLogs(logsData.data);
-      
       if (eleicoesData) {
         let eleicoesUnicas = eleicoesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        // Deteta votos antigos que não têm eleicao_id e adiciona uma categoria "Legacy" para não os perder
-        if (sortedVotes.some(v => !v.eleicao_id)) {
-            eleicoesUnicas.push({ id: 'legacy', nome: 'Eleições Legadas (Líderes de Sala)', tipo: 'turma' });
-        }
+        if (sortedVotes.some(v => !v.eleicao_id)) { eleicoesUnicas.push({ id: 'legacy', nome: 'Eleições Legadas', tipo: 'turma', cargos: '', status: 'encerrada', created_at: '' }); }
         setAllEleicoes(eleicoesUnicas);
         if (eleicoesUnicas.length > 0 && !apuracaoEleicaoId) setApuracaoEleicaoId(eleicoesUnicas[0].id);
       }
@@ -126,17 +108,13 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
   const getEleicaoNome = (id?: string) => {
-      if (!id || id === 'legacy') return "Eleições Legadas (Líderes de Sala)";
+      if (!id || id === 'legacy') return "Eleições Legadas";
       return allEleicoes.find(e => e.id === id)?.nome || "Desconhecida";
   }
 
-  // ============================================================================
-  // MOTOR DE APURAÇÃO UNIVERSAL E POR TURMA
-  // ============================================================================
   const eleicaoSelecionada = allEleicoes.find(e => e.id === apuracaoEleicaoId);
   const isEleicaoGlobal = eleicaoSelecionada?.tipo === 'universal' || eleicaoSelecionada?.tipo === 'geral';
 
-  // Gamificação Global
   const estatisticasEscola = useMemo(() => {
     const totalEleitores = allStudents.length;
     const eleitoresQueVotaram = new Set(allVotes.map(v => v.voter_name)).size; 
@@ -156,26 +134,20 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const apuracaoOverview = useMemo(() => {
     if (!apuracaoEleicaoId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
-    
     const votosFiltrados = allVotes.filter(v => {
       const matchEleicao = (apuracaoEleicaoId === 'legacy' && !v.eleicao_id) || v.eleicao_id === apuracaoEleicaoId;
       if (!matchEleicao) return false;
-      // Se a eleição não for global e houver turma selecionada, aplica filtro de turma. Senão ignora turma.
       if (!isEleicaoGlobal && apuracaoTurmaId && v.turma_id !== apuracaoTurmaId) return false;
       return true;
     });
-
     return {
-      total: votosFiltrados.length, 
-      validos: votosFiltrados.filter(v => v.vote_type === 'candidate').length,
-      brancos: votosFiltrados.filter(v => v.vote_type === 'branco').length, 
-      nulos: votosFiltrados.filter(v => v.vote_type === 'nulo').length
+      total: votosFiltrados.length, validos: votosFiltrados.filter(v => v.vote_type === 'candidate').length,
+      brancos: votosFiltrados.filter(v => v.vote_type === 'branco').length, nulos: votosFiltrados.filter(v => v.vote_type === 'nulo').length
     };
   }, [apuracaoEleicaoId, apuracaoTurmaId, allVotes, isEleicaoGlobal]);
 
   const apuracaoResults = useMemo(() => {
     if (!apuracaoEleicaoId) return null;
-    
     const votosFiltrados = allVotes.filter(v => {
       const matchEleicao = (apuracaoEleicaoId === 'legacy' && !v.eleicao_id) || v.eleicao_id === apuracaoEleicaoId;
       if (!matchEleicao) return false;
@@ -215,9 +187,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     });
   }, [apuracaoEleicaoId, apuracaoTurmaId, allVotes, allCandidates, isEleicaoGlobal, eleicaoSelecionada]);
 
-  // ========================================================================
-  // FILTROS E EXPORTAÇÕES (AUDITORIA E SNAPSHOT)
-  // ========================================================================
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
       const s = filters.search.toLowerCase();
@@ -278,7 +247,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       link.href = url; link.download = `snapshot_seguranca_${escolaNome.replace(/\s+/g, '_')}_${new Date().getTime()}.json`;
       link.click();
       toast({ title: "Snapshot Gerado", description: "Backup completo descarregado para a sua máquina." });
-      
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user?.email) await supabase.from('admin_logs').insert({ admin_email: userData.user.email, acao: "BACKUP", detalhes: "Foi gerado um Snapshot JSON da Base de Dados inteira." });
     } catch(e) {
@@ -297,9 +265,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
   };
 
-  // ========================================================================
-  // IMPRESSÕES DE PDF (DASHBOARD, REPORTS E MÍDIAS)
-  // ========================================================================
   const printDashboardReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -322,19 +287,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       }).join('');
     } else rolesHtml = `<p style="text-align: center; color: #666; margin-top: 40px;">Nenhum dado de votação encontrado.</p>`;
 
-    const reportHtml = `
-      <html><head><title>Boletim de Urna - ${nomeEleicao}</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; } .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #ccc; padding: 12px; text-align: left; } th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }
-          </style>
-        </head><body>
-          <div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Boletim Oficial de Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #333;">${tituloRelatorio}</h3><p style="margin:5px 0 0 0; color:#666;">Eleição: ${nomeEleicao}</p></div>
-          <div class="overview"><div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>
-          ${rolesHtml}
-          <div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body></html>
-    `;
+    const reportHtml = `<html><head><title>Boletim de Urna - ${nomeEleicao}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; } .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #ccc; padding: 12px; text-align: left; } th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Boletim Oficial de Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #333;">${tituloRelatorio}</h3><p style="margin:5px 0 0 0; color:#666;">Eleição: ${nomeEleicao}</p></div><div class="overview"><div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>${rolesHtml}<div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
@@ -344,24 +297,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
     const nomeDaEscolaSeguro = escapeHtml(escolaNome);
 
-    const rows = filteredReport.map(v => `
-      <tr><td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td><td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td><td>${escapeHtml(getTurmaName(v.turma_id))}</td><td><strong>${escapeHtml(v.voter_name)}</strong></td><td style="text-align: center; font-weight: bold;">${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}</td></tr>
-    `).join("");
+    const rows = filteredReport.map(v => `<tr><td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td><td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td><td>${escapeHtml(getTurmaName(v.turma_id))}</td><td><strong>${escapeHtml(v.voter_name)}</strong></td><td style="text-align: center; font-weight: bold;">${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}</td></tr>`).join("");
 
-    const reportHtml = `
-      <html><head><title>Auditoria de Votação - ${nomeDaEscolaSeguro}</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; } .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ccc; padding: 10px; text-align: left; } th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }
-          </style>
-        </head><body>
-          <div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Relatório Oficial de Auditoria Cadastral</div></div>
-          <div class="filters"><strong>Filtros aplicados na pesquisa:</strong><br/>Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}</div>
-          <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
-          <table><thead><tr><th>Data/Hora</th><th>Eleição</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead><tbody>${rows}</tbody></table>
-          <div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body></html>
-    `;
+    const reportHtml = `<html><head><title>Auditoria de Votação - ${nomeDaEscolaSeguro}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; } .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ccc; padding: 10px; text-align: left; } th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Relatório Oficial de Auditoria Cadastral</div></div><div class="filters"><strong>Filtros aplicados na pesquisa:</strong><br/>Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}</div><p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p><table><thead><tr><th>Data/Hora</th><th>Eleição</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead><tbody>${rows}</tbody></table><div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
@@ -370,52 +308,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
     const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
-    
-    const cardHtml = `
-      <html>
-        <head>
-          <title>Santinho - ${escapeHtml(candidate.name)}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0f172a; }
-            .card { width: 380px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid #334155; position: relative; }
-            .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #fbbf24, #f59e0b); }
-            .header { padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
-            .logo-placeholder { width: 60px; height: 60px; border-radius: 12px; background: rgba(255,255,255,0.1); margin: 0 auto 15px auto; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-            .logo-placeholder img { max-width: 100%; max-height: 100%; object-fit: contain; }
-            .school { font-size: 11px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; color: #94a3b8; margin-bottom: 5px; }
-            .role { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #f8fafc; margin: 0; line-height: 1.1; }
-            .turma { font-size: 11px; font-weight: bold; color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); background: rgba(251,191,36,0.1); display: inline-block; padding: 6px 16px; border-radius: 20px; margin-top: 15px; letter-spacing: 1px;}
-            .body { padding: 40px 30px; text-align: center; }
-            .number-box { background: rgba(0,0,0,0.3); border: 2px solid #fbbf24; border-radius: 16px; display: inline-block; padding: 15px 40px; margin-bottom: 25px; box-shadow: 0 0 20px rgba(251,191,36,0.1); }
-            .number-label { font-size: 10px; color: #fbbf24; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; display: block; margin-bottom: 5px; }
-            .number { font-size: 64px; font-weight: 900; color: #ffffff; margin: 0; line-height: 1; text-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-            .name { font-size: 28px; font-weight: 900; color: #f8fafc; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; letter-spacing: -0.5px; }
-            .vice { font-size: 13px; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; }
-            .footer { background: #020617; color: #475569; text-align: center; padding: 20px; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <div class="header">
-              <div class="logo-placeholder">
-                 ${escolaLogo ? `<img src="${escolaLogo}" />` : `<span style="color:#fff; font-size: 24px;">🏛️</span>`}
-              </div>
-              <div class="school">${escapeHtml(escolaNome)}</div>
-              <h1 class="role">${primaryRole}</h1>
-              <div class="turma">Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</div>
-            </div>
-            <div class="body">
-              <div class="number-box"><span class="number-label">Vote Certo</span><p class="number">${candidate.candidate_number}</p></div>
-              <h2 class="name">${escapeHtml(candidate.name)}</h2>
-              ${candidate.vice_name ? `<p class="vice">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}
-            </div>
-            <div class="footer">Sistema Oficial de Votação</div>
-          </div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
-    `;
+    const cardHtml = `<html><head><title>Santinho - ${escapeHtml(candidate.name)}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap'); body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0f172a; } .card { width: 380px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid #334155; position: relative; } .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #fbbf24, #f59e0b); } .header { padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); } .logo-placeholder { width: 60px; height: 60px; border-radius: 12px; background: rgba(255,255,255,0.1); margin: 0 auto 15px auto; display: flex; align-items: center; justify-content: center; overflow: hidden; } .logo-placeholder img { max-width: 100%; max-height: 100%; object-fit: contain; } .school { font-size: 11px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; color: #94a3b8; margin-bottom: 5px; } .role { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #f8fafc; margin: 0; line-height: 1.1; } .turma { font-size: 11px; font-weight: bold; color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); background: rgba(251,191,36,0.1); display: inline-block; padding: 6px 16px; border-radius: 20px; margin-top: 15px; letter-spacing: 1px;} .body { padding: 40px 30px; text-align: center; } .number-box { background: rgba(0,0,0,0.3); border: 2px solid #fbbf24; border-radius: 16px; display: inline-block; padding: 15px 40px; margin-bottom: 25px; box-shadow: 0 0 20px rgba(251,191,36,0.1); } .number-label { font-size: 10px; color: #fbbf24; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; display: block; margin-bottom: 5px; } .number { font-size: 64px; font-weight: 900; color: #ffffff; margin: 0; line-height: 1; text-shadow: 0 4px 10px rgba(0,0,0,0.5); } .name { font-size: 28px; font-weight: 900; color: #f8fafc; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; letter-spacing: -0.5px; } .vice { font-size: 13px; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; } .footer { background: #020617; color: #475569; text-align: center; padding: 20px; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }</style></head><body><div class="card"><div class="header"><div class="logo-placeholder">${escolaLogo ? `<img src="${escolaLogo}" />` : `<span style="color:#fff; font-size: 24px;">🏛️</span>`}</div><div class="school">${escapeHtml(escolaNome)}</div><h1 class="role">${primaryRole}</h1><div class="turma">Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</div></div><div class="body"><div class="number-box"><span class="number-label">Vote Certo</span><p class="number">${candidate.candidate_number}</p></div><h2 class="name">${escapeHtml(candidate.name)}</h2>${candidate.vice_name ? `<p class="vice">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}</div><div class="footer">Credencial Criptografada Oficial</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank", "width=500,height=700");
     if (printWindow) { printWindow.document.write(cardHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
@@ -424,50 +317,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
     const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
-    
-    const badgeHtml = `
-      <html>
-        <head>
-          <title>Crachá Oficial - ${escapeHtml(candidate.name)}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #e2e8f0; }
-            .badge { width: 54mm; height: 86mm; background: white; border-radius: 12px; box-sizing: border-box; border: 1px solid #cbd5e1; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-            .hole-punch { width: 14mm; height: 3mm; border-radius: 5px; border: 1px solid #cbd5e1; position: absolute; top: 4mm; background: #f8fafc; z-index: 10; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
-            .header { width: 100%; height: 28mm; background: linear-gradient(135deg, #1e3a8a, #0f172a); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 3mm; }
-            .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5mm; background: #fbbf24; }
-            .school-name { color: #f8fafc; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; text-align: center; margin-top: 5mm; padding: 0 5mm; }
-            .photo-area { width: 28mm; height: 35mm; border: 2px solid #cbd5e1; background: #f1f5f9; margin-top: 4mm; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 8px; font-weight: bold; text-transform: uppercase; }
-            .info-area { text-align: center; margin-top: 2mm; padding: 0 4mm; width: 100%; box-sizing: border-box; flex-1; }
-            .name { font-size: 13px; font-weight: 900; color: #0f172a; text-transform: uppercase; line-height: 1; margin: 0; letter-spacing: -0.5px;}
-            .role { font-size: 9px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 1mm 0 2mm 0; }
-            .details { font-size: 7px; color: #64748b; font-weight: bold; margin-bottom: 2mm; display: flex; flex-direction: column; gap: 1px;}
-            .number-badge { margin-top: auto; background: #0f172a; color: #fbbf24; display: inline-block; padding: 1.5mm 5mm; border-radius: 6px; font-size: 18px; font-weight: 900; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 4mm;}
-            @media print { body { background: white; } .badge { box-shadow: none; border: 1px dashed #ccc; } .hole-punch { border: 1px dashed #999; } }
-          </style>
-        </head>
-        <body>
-          <div class="badge">
-            <div class="hole-punch"></div>
-            <div class="header">
-              ${escolaLogo ? `<img src="${escolaLogo}" style="height:8mm; margin-bottom:1mm; object-fit:contain;" />` : ''}
-              <span class="school-name">${escapeHtml(escolaNome)}</span>
-            </div>
-            <div class="photo-area">3x4 FOTO</div>
-            <div class="info-area">
-              <h1 class="name">${escapeHtml(candidate.name)}</h1>
-              <h2 class="role">${primaryRole}</h2>
-              <div class="details">
-                <span>Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</span>
-                <span>Ano Letivo: ${new Date().getFullYear()}</span>
-              </div>
-              <div class="number-badge">${candidate.candidate_number}</div>
-            </div>
-          </div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
-    `;
+    const badgeHtml = `<html><head><title>Crachá Oficial - ${escapeHtml(candidate.name)}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap'); body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #e2e8f0; } .badge { width: 54mm; height: 86mm; background: white; border-radius: 12px; box-sizing: border-box; border: 1px solid #cbd5e1; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); } .hole-punch { width: 14mm; height: 3mm; border-radius: 5px; border: 1px solid #cbd5e1; position: absolute; top: 4mm; background: #f8fafc; z-index: 10; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); } .header { width: 100%; height: 28mm; background: linear-gradient(135deg, #1e3a8a, #0f172a); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 3mm; } .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5mm; background: #fbbf24; } .school-name { color: #f8fafc; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; text-align: center; margin-top: 5mm; padding: 0 5mm; } .photo-area { width: 28mm; height: 35mm; border: 2px solid #cbd5e1; background: #f1f5f9; margin-top: 4mm; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 8px; font-weight: bold; text-transform: uppercase; } .info-area { text-align: center; margin-top: 2mm; padding: 0 4mm; width: 100%; box-sizing: border-box; flex-1; } .name { font-size: 13px; font-weight: 900; color: #0f172a; text-transform: uppercase; line-height: 1; margin: 0; letter-spacing: -0.5px;} .role { font-size: 9px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 1mm 0 2mm 0; } .details { font-size: 7px; color: #64748b; font-weight: bold; margin-bottom: 2mm; display: flex; flex-direction: column; gap: 1px;} .number-badge { margin-top: auto; background: #0f172a; color: #fbbf24; display: inline-block; padding: 1.5mm 5mm; border-radius: 6px; font-size: 18px; font-weight: 900; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 4mm;} @media print { body { background: white; } .badge { box-shadow: none; border: 1px dashed #ccc; } .hole-punch { border: 1px dashed #999; } }</style></head><body><div class="badge"><div class="hole-punch"></div><div class="header">${escolaLogo ? `<img src="${escolaLogo}" style="height:8mm; margin-bottom:1mm; object-fit:contain;" />` : ''}<span class="school-name">${escapeHtml(escolaNome)}</span></div><div class="photo-area">3x4 FOTO</div><div class="info-area"><h1 class="name">${escapeHtml(candidate.name)}</h1><h2 class="role">${primaryRole}</h2><div class="details"><span>Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</span><span>Ano Letivo: ${new Date().getFullYear()}</span></div><div class="number-badge">${candidate.candidate_number}</div></div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank", "width=400,height=600");
     if (printWindow) { printWindow.document.write(badgeHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
@@ -545,6 +395,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               </div>
               <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
                 <select className="w-full md:w-64 p-3 border-2 border-slate-200 rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-blue-500" value={apuracaoEleicaoId} onChange={e => setApuracaoEleicaoId(e.target.value)}>
+                  <option value="" disabled>Selecione a Eleição...</option>
                   {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
                 </select>
 
@@ -562,8 +413,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs font-bold text-slate-500 uppercase">Votos Computados</p><p className="text-3xl font-black text-blue-600 mt-1">{apuracaoOverview.total}</p></div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs font-bold text-slate-500 uppercase">Votos Válidos</p><p className="text-3xl font-black text-green-600 mt-1">{apuracaoOverview.validos}</p></div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs font-bold text-slate-500 uppercase">Votos em Branco</p><p className="text-3xl font-black text-slate-600 mt-1">{apuracaoOverview.brancos}</p></div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs font-bold text-slate-500 uppercase">Votos Nulos</p><p className="text-3xl font-black text-orange-500 mt-1">{apuracaoOverview.nulos}</p></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs font-bold text-slate-500 uppercase">Brancos</p><p className="text-3xl font-black text-slate-600 mt-1">{apuracaoOverview.brancos}</p></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs font-bold text-slate-500 uppercase">Nulos</p><p className="text-3xl font-black text-orange-500 mt-1">{apuracaoOverview.nulos}</p></div>
             </div>
 
             {reportLoading ? <div className="py-12 text-center text-slate-400 font-bold animate-pulse">Calculando...</div> : apuracaoResults?.length === 0 ? (
@@ -657,7 +508,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ABA: AUDITORIA (REPORTS E CSV COMPLETOS) */}
+        {/* ABA: AUDITORIA (REPORTS) */}
         {activeTab === "reports" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -673,11 +524,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
                 <div className="flex gap-2 w-full md:w-auto">
                   <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"><Download className="w-4 h-4" /> Exportar Planilha</button>
+                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"><Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF"}</button>
                 </div>
               </div>
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b bg-slate-50 flex justify-between items-center"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span></div>
+              <div className="p-4 border-b bg-slate-50 flex justify-between items-center"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span><button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">{showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR VOTOS" : "REVELAR VOTOS"}</button></div>
               <div className="overflow-x-auto min-h-[400px]">
                 {reportLoading ? (
                   <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Carregando registros...</div>
@@ -694,9 +546,13 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                           <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
                           <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name}</p></td>
                           <td className="p-4 text-center">
-                            <span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">{v.candidate_role || 'Geral'}</span><span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>{v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}</span>
+                            {showVotes ? (
+                              <><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">{v.candidate_role || 'Geral'}</span><span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>{v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}</span></>
+                            ) : (
+                              <span className="text-slate-300 italic text-xs flex justify-center items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
+                            )}
                           </td>
-                          <td className="p-4 text-center"><button onClick={() => {}} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir voto"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
+                          <td className="p-4 text-center"><button onClick={() => handleDeleteVote(v.id!, v.voter_name)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir voto"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -710,7 +566,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ABA: LOGS DE SEGURANÇA E SNAPSHOT */}
+        {/* ABA: LOGS E SNAPSHOT */}
         {activeTab === "logs" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
