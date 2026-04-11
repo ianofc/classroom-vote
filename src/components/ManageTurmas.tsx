@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
 import { Turma, Student } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Edit2, Users, Loader2, Save, X, UserPlus, UploadCloud, Tag, Printer, Contact2, Zap } from "lucide-react";
+import { Plus, Trash2, Edit2, Users, Loader2, Save, X, UserPlus, UploadCloud, Tag, Printer, Contact2, Zap, FileText, Contact } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import Papa from 'papaparse';
 
-interface ManageTurmasProps {
-  onTurmasChanged: () => void;
-}
+interface ManageTurmasProps { onTurmasChanged: () => void; }
 
 const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -20,7 +18,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const [loading, setLoading] = useState(false);
   const [escolaId, setEscolaId] = useState<string | null>(null);
   const [escolaNome, setEscolaNome] = useState("Instituição");
-  const [escolaLogo, setEscolaLogo] = useState<string | null>(null); // Guardar o Logo para o PDF
+  const [escolaLogo, setEscolaLogo] = useState<string | null>(null);
 
   const [studentTags, setStudentTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -33,22 +31,13 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     const { data: userData } = await supabase.auth.getUser();
     if (userData?.user) {
       const { data: adminData } = await supabase.from('admins').select('escolas(id, nome, logo_url)').eq('auth_id', userData.user.id).single();
-      
-      let eId = null;
-      let eNome = "Instituição";
-      let eLogo = null;
-      
+      let eId = null; let eNome = "Instituição"; let eLogo = null;
       if (adminData?.escolas) {
         const escolaData = Array.isArray(adminData.escolas) ? adminData.escolas[0] : adminData.escolas;
-        eId = escolaData?.id;
-        eNome = escolaData?.nome || "Instituição";
-        eLogo = escolaData?.logo_url || null;
+        eId = escolaData?.id; eNome = escolaData?.nome || "Instituição"; eLogo = escolaData?.logo_url || null;
       }
-
       if (eId) {
-        setEscolaId(eId);
-        setEscolaNome(eNome);
-        setEscolaLogo(eLogo);
+        setEscolaId(eId); setEscolaNome(eNome); setEscolaLogo(eLogo);
         const { data } = await supabase.from('turmas').select('*').eq('escola_id', eId).order('name');
         setTurmas(data || []);
       }
@@ -59,53 +48,44 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const handleAddTurma = async () => {
     if (!newTurmaName.trim() || !escolaId) return;
     const { data, error } = await supabase.from('turmas').insert([{ name: newTurmaName, escola_id: escolaId }]).select().single();
-    if (!error && data) {
-      setTurmas([...turmas, data]);
-      setNewTurmaName("");
-      onTurmasChanged();
-      toast({ title: "Sucesso", description: "Turma adicionada!" });
-    }
+    if (!error && data) { setTurmas([...turmas, data]); setNewTurmaName(""); onTurmasChanged(); toast({ title: "Sucesso", description: "Turma adicionada!" }); }
   };
 
   const handleCreateTestEnvironment = async () => {
     if (!escolaId) return;
     setLoading(true);
     try {
-      const { data: turmaData, error: turmaError } = await supabase
-        .from('turmas')
-        .insert([{ name: "Turma de Teste 🧪", escola_id: escolaId }])
-        .select()
-        .single();
-
+      const { data: turmaData, error: turmaError } = await supabase.from('turmas').insert([{ name: "Turma de Teste 🧪", escola_id: escolaId }]).select().single();
       if (turmaError) throw turmaError;
-
       const mockStudents = [
         { turma_id: turmaData.id, name: "Eleitor de Teste", document: "000000", is_candidate: false },
         { turma_id: turmaData.id, name: "Candidato Alfa", document: "111111", is_candidate: true, candidate_number: 10, candidate_role: "Candidato Teste", vice_name: "Vice Beta" },
         { turma_id: turmaData.id, name: "Candidato Ômega", document: "222222", is_candidate: true, candidate_number: 20, candidate_role: "Candidato Teste", vice_name: "Vice Delta" }
       ];
-
       const { error: stdError } = await supabase.from('students').insert(mockStudents);
       if (stdError) throw stdError;
-
       toast({ title: "Ambiente de Teste Criado!", description: "A Turma de Teste e os alunos foram gerados com sucesso." });
       fetchTurmas();
-    } catch(e: any) {
-      toast({ title: "Erro ao gerar teste", description: e.message, variant: "destructive" });
-    }
+    } catch(e: any) { toast({ title: "Erro ao gerar teste", description: e.message, variant: "destructive" }); }
     setLoading(false);
   };
 
   const handleDeleteTurma = async (id: string) => {
-    if (!confirm("Excluir esta turma apagará todos os alunos nela. Continuar?")) return;
+    if (!confirm("Atenção! Excluir esta turma apagará permanentemente todos os alunos E TODOS OS VOTOS vinculados a ela. Tem a certeza absoluta?")) return;
+    setLoading(true);
+    await supabase.from('votes').delete().eq('turma_id', id);
     await supabase.from('students').delete().eq('turma_id', id);
     const { error } = await supabase.from('turmas').delete().eq('id', id);
+    
     if (!error) {
       setTurmas(turmas.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
       onTurmasChanged();
-      toast({ title: "Sucesso", description: "Turma removida." });
+      toast({ title: "Sucesso", description: "Turma e registos removidos." });
+    } else {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
     }
+    setLoading(false);
   };
 
   const fetchStudents = async (turmaId: string) => {
@@ -115,79 +95,45 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     setLoading(false);
   };
 
-  const selectTurma = (t: Turma) => {
-    setSelectedTurma(t);
-    fetchStudents(t.id);
-    resetForm();
-  };
+  const selectTurma = (t: Turma) => { setSelectedTurma(t); fetchStudents(t.id); resetForm(); };
 
   const resetForm = () => {
     setNewStudent({ name: "", document: "", contact: "", is_candidate: false, candidate_number: "", vice_name: "" });
-    setStudentTags([]);
-    setTagInput("");
-    setEditingStudentId(null);
+    setStudentTags([]); setTagInput(""); setEditingStudentId(null);
   };
 
   const handleAddTag = () => {
-    if (tagInput.trim() && !studentTags.includes(tagInput.trim())) {
-      setStudentTags([...studentTags, tagInput.trim()]);
-      setTagInput("");
-    }
+    if (tagInput.trim() && !studentTags.includes(tagInput.trim())) { setStudentTags([...studentTags, tagInput.trim()]); setTagInput(""); }
   };
-
-  const removeTag = (tagToRemove: string) => {
-    setStudentTags(studentTags.filter(tag => tag !== tagToRemove));
-  };
+  const removeTag = (tagToRemove: string) => { setStudentTags(studentTags.filter(tag => tag !== tagToRemove)); };
 
   const handleSaveStudent = async () => {
     if (!newStudent.name.trim() || !selectedTurma) return;
     const cargosFinal = studentTags.join(', ');
     const payload = {
-      turma_id: selectedTurma.id,
-      name: newStudent.name,
-      document: newStudent.document,
-      contact: newStudent.contact,
-      is_candidate: newStudent.is_candidate,
-      candidate_role: cargosFinal,
-      candidate_number: newStudent.candidate_number ? parseInt(newStudent.candidate_number) : null,
-      vice_name: newStudent.vice_name
+      turma_id: selectedTurma.id, name: newStudent.name, document: newStudent.document, contact: newStudent.contact,
+      is_candidate: newStudent.is_candidate, candidate_role: cargosFinal,
+      candidate_number: newStudent.candidate_number ? parseInt(newStudent.candidate_number) : null, vice_name: newStudent.vice_name
     };
 
     if (editingStudentId) {
       const { error } = await supabase.from('students').update(payload).eq('id', editingStudentId);
-      if (!error) {
-        toast({ title: "Atualizado", description: "Dados do aluno atualizados." });
-        fetchStudents(selectedTurma.id);
-        resetForm();
-      }
+      if (!error) { toast({ title: "Atualizado", description: "Dados do aluno atualizados." }); fetchStudents(selectedTurma.id); resetForm(); }
     } else {
       const { error } = await supabase.from('students').insert([payload]);
-      if (!error) {
-        toast({ title: "Adicionado", description: "Aluno adicionado com sucesso." });
-        fetchStudents(selectedTurma.id);
-        resetForm();
-      }
+      if (!error) { toast({ title: "Adicionado", description: "Aluno adicionado com sucesso." }); fetchStudents(selectedTurma.id); resetForm(); }
     }
   };
 
   const startEditStudent = (s: Student) => {
-    setNewStudent({
-      name: s.name, document: s.document || "", contact: s.contact || "",
-      is_candidate: s.is_candidate || false,
-      candidate_number: s.candidate_number?.toString() || "",
-      vice_name: s.vice_name || ""
-    });
-    setStudentTags(s.candidate_role ? s.candidate_role.split(',').map(r => r.trim()) : []);
-    setEditingStudentId(s.id!);
+    setNewStudent({ name: s.name, document: s.document || "", contact: s.contact || "", is_candidate: s.is_candidate || false, candidate_number: s.candidate_number?.toString() || "", vice_name: s.vice_name || "" });
+    setStudentTags(s.candidate_role ? s.candidate_role.split(',').map(r => r.trim()) : []); setEditingStudentId(s.id!);
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!confirm("Remover aluno?")) return;
+    if (!confirm("Remover aluno? Se este aluno for um candidato com votos, os votos serão apagados. Deseja continuar?")) return;
     const { error } = await supabase.from('students').delete().eq('id', id);
-    if (!error) {
-      setStudents(students.filter(s => s.id !== id));
-      toast({ title: "Removido", description: "Aluno removido." });
-    }
+    if (!error) { setStudents(students.filter(s => s.id !== id)); toast({ title: "Removido", description: "Aluno removido." }); }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,20 +144,11 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       header: true, skipEmptyLines: true,
       complete: async (results) => {
         const rows = results.data as any[];
-        const formattedStudents = rows.map(row => ({
-          turma_id: selectedTurma.id,
-          name: row.Nome || row.name || row.NOME,
-          document: row.Matricula || row.document || row.MATRICULA || null,
-          is_candidate: false
-        })).filter(s => s.name);
-
+        const formattedStudents = rows.map(row => ({ turma_id: selectedTurma.id, name: row.Nome || row.name || row.NOME, document: row.Matricula || row.document || row.MATRICULA || null, is_candidate: false })).filter(s => s.name);
         if (formattedStudents.length > 0) {
           const { error } = await supabase.from('students').insert(formattedStudents);
           if (error) toast({ title: "Erro no Upload", description: error.message, variant: "destructive" });
-          else {
-            toast({ title: "Planilha Importada!", description: `${formattedStudents.length} alunos cadastrados.` });
-            fetchStudents(selectedTurma.id);
-          }
+          else { toast({ title: "Planilha Importada!", description: `${formattedStudents.length} alunos cadastrados.` }); fetchStudents(selectedTurma.id); }
         }
         setLoading(false);
       }
@@ -219,11 +156,12 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   };
 
   // ========================================================================
-  // GERADOR DE SANTINHOS PREMIUM (BLACK & GOLD)
+  // GERADOR DE SANTINHOS PREMIUM E CRACHÁS (BLACK & GOLD)
   // ========================================================================
+  const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+
   const printCandidateCard = (candidate: Student) => {
     setIsPrintingCard(true);
-    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
     const cargosList = candidate.candidate_role ? candidate.candidate_role.split(',') : [];
     const primaryRole = cargosList.length > 0 ? escapeHtml(cargosList[0].trim()) : "Candidato";
     
@@ -249,6 +187,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
             .name { font-size: 28px; font-weight: 900; color: #f8fafc; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; letter-spacing: -0.5px; }
             .vice { font-size: 13px; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; }
             .footer { background: #020617; color: #475569; text-align: center; padding: 20px; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
+            @media print { body { background: white; } .card { box-shadow: none; border: 1px dashed #ccc; margin: 0 auto; } }
           </style>
         </head>
         <body>
@@ -262,16 +201,11 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
               <div class="turma">Turma: ${escapeHtml(selectedTurma?.name || '')}</div>
             </div>
             <div class="body">
-              <div class="number-box">
-                <span class="number-label">Vote Certo</span>
-                <p class="number">${candidate.candidate_number}</p>
-              </div>
+              <div class="number-box"><span class="number-label">Vote Certo</span><p class="number">${candidate.candidate_number}</p></div>
               <h2 class="name">${escapeHtml(candidate.name)}</h2>
               ${candidate.vice_name ? `<p class="vice">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}
             </div>
-            <div class="footer">
-              Credencial Oficial de Campanha
-            </div>
+            <div class="footer">Credencial Oficial de Campanha</div>
           </div>
           <script>window.onload = function() { window.print(); }</script>
         </body>
@@ -281,6 +215,65 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     const printWindow = window.open("", "_blank", "width=500,height=700");
     if (printWindow) {
       printWindow.document.write(cardHtml);
+      printWindow.document.close();
+      setTimeout(() => { setIsPrintingCard(false); }, 1000);
+    } else {
+      setIsPrintingCard(false);
+    }
+  };
+
+  const printBadge = (candidate: Student) => {
+    setIsPrintingCard(true);
+    const cargosList = candidate.candidate_role ? candidate.candidate_role.split(',') : [];
+    const primaryRole = cargosList.length > 0 ? escapeHtml(cargosList[0].trim()) : "Candidato";
+    
+    const badgeHtml = `
+      <html>
+        <head>
+          <title>Crachá Oficial - ${escapeHtml(candidate.name)}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #e2e8f0; }
+            .badge { width: 54mm; height: 86mm; background: white; border-radius: 12px; box-sizing: border-box; border: 1px solid #cbd5e1; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+            .hole-punch { width: 14mm; height: 3mm; border-radius: 5px; border: 1px solid #cbd5e1; position: absolute; top: 4mm; background: #f8fafc; z-index: 10; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+            .header { width: 100%; height: 28mm; background: linear-gradient(135deg, #1e3a8a, #0f172a); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 3mm; }
+            .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5mm; background: #fbbf24; }
+            .school-name { color: #f8fafc; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; text-align: center; margin-top: 5mm; padding: 0 5mm; }
+            .photo-area { width: 28mm; height: 35mm; border: 2px solid #cbd5e1; background: #f1f5f9; margin-top: 4mm; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 8px; font-weight: bold; text-transform: uppercase; }
+            .info-area { text-align: center; margin-top: 2mm; padding: 0 4mm; width: 100%; box-sizing: border-box; flex-1; }
+            .name { font-size: 13px; font-weight: 900; color: #0f172a; text-transform: uppercase; line-height: 1; margin: 0; letter-spacing: -0.5px;}
+            .role { font-size: 9px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 1mm 0 2mm 0; }
+            .details { font-size: 7px; color: #64748b; font-weight: bold; margin-bottom: 2mm; display: flex; flex-direction: column; gap: 1px;}
+            .number-badge { margin-top: auto; background: #0f172a; color: #fbbf24; display: inline-block; padding: 1.5mm 5mm; border-radius: 6px; font-size: 18px; font-weight: 900; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 4mm;}
+            @media print { body { background: white; } .badge { box-shadow: none; border: 1px dashed #ccc; } .hole-punch { border: 1px dashed #999; } }
+          </style>
+        </head>
+        <body>
+          <div class="badge">
+            <div class="hole-punch"></div>
+            <div class="header">
+              ${escolaLogo ? `<img src="${escolaLogo}" style="height:8mm; margin-bottom:1mm; object-fit:contain;" />` : ''}
+              <span class="school-name">${escapeHtml(escolaNome)}</span>
+            </div>
+            <div class="photo-area">3x4 FOTO</div>
+            <div class="info-area">
+              <h1 class="name">${escapeHtml(candidate.name)}</h1>
+              <h2 class="role">${primaryRole}</h2>
+              <div class="details">
+                <span>Turma: ${escapeHtml(selectedTurma?.name || '')}</span>
+                <span>Ano Letivo: ${new Date().getFullYear()}</span>
+              </div>
+              <div class="number-badge">${candidate.candidate_number}</div>
+            </div>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank", "width=400,height=600");
+    if (printWindow) {
+      printWindow.document.write(badgeHtml);
       printWindow.document.close();
       setTimeout(() => { setIsPrintingCard(false); }, 1000);
     } else {
@@ -298,11 +291,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
           <button onClick={handleAddTurma} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700"><Plus className="w-4 h-4" /></button>
         </div>
 
-        <button 
-          onClick={handleCreateTestEnvironment} 
-          disabled={loading || !escolaId} 
-          className="w-full mb-4 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200 p-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-        >
+        <button onClick={handleCreateTestEnvironment} disabled={loading || !escolaId} className="w-full mb-4 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200 p-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50">
           <Zap className="w-4 h-4" /> GERAR AMBIENTE DE TESTE RÁPIDO
         </button>
 
@@ -321,10 +310,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
           <div className="space-y-6">
             <div className="flex justify-between items-center bg-slate-800 text-white p-4 rounded-xl">
               <h2 className="text-xl font-black flex items-center gap-2">Turma: <span className="text-blue-400">{selectedTurma.name}</span></h2>
-              <label className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-2 transition-colors">
-                <UploadCloud className="w-4 h-4"/> Importar CSV
-                <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
-              </label>
+              <label className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-2 transition-colors"><UploadCloud className="w-4 h-4"/> Importar CSV<input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} /></label>
             </div>
 
             <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm">
@@ -368,9 +354,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                     {editingStudentId ? <Save className="w-4 h-4"/> : <UserPlus className="w-4 h-4"/>} 
                     {editingStudentId ? "ATUALIZAR PERFIL" : "CRIAR IDENTIDADE"}
                   </button>
-                  {editingStudentId && (
-                    <button onClick={resetForm} className="bg-slate-200 text-slate-700 px-4 rounded-lg font-bold hover:bg-slate-300">Cancelar</button>
-                  )}
+                  {editingStudentId && (<button onClick={resetForm} className="bg-slate-200 text-slate-700 px-4 rounded-lg font-bold hover:bg-slate-300">Cancelar</button>)}
                 </div>
               </div>
             </div>
@@ -378,40 +362,25 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div className="bg-slate-50 p-3 border-b border-slate-200"><h3 className="text-xs font-bold uppercase text-slate-500">Cidadãos Registrados ({students.length})</h3></div>
               <div className="max-h-[400px] overflow-y-auto">
-                {loading ? (
-                  <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
-                ) : students.length === 0 ? (
-                  <div className="text-center p-8 text-sm text-slate-400">Nenhum perfil criado nesta turma.</div>
-                ) : (
+                {loading ? <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div> : students.length === 0 ? <div className="text-center p-8 text-sm text-slate-400">Nenhum perfil criado nesta turma.</div> : (
                   <div className="divide-y divide-slate-100">
                     {students.map(s => (
                       <div key={s.id} className="p-4 hover:bg-slate-50 flex items-center justify-between group">
                         <div>
-                          <p className="font-bold text-slate-800 flex items-center gap-2">
-                            {s.is_candidate && <Contact2 className="w-4 h-4 text-blue-500" />}
-                            {s.name}
-                          </p>
+                          <p className="font-bold text-slate-800 flex items-center gap-2">{s.is_candidate && <Contact2 className="w-4 h-4 text-blue-500" />}{s.name}</p>
                           {s.is_candidate && s.candidate_role && (
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {s.candidate_role.split(',').map((tag, i) => (
-                                <span key={i} className="bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">
-                                  {tag.trim()}
-                                </span>
-                              ))}
-                              {s.candidate_number && (
-                                <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded-md">
-                                  Nº {s.candidate_number}
-                                </span>
-                              )}
+                              {s.candidate_role.split(',').map((tag, i) => (<span key={i} className="bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">{tag.trim()}</span>))}
+                              {s.candidate_number && <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded-md">Nº {s.candidate_number}</span>}
                             </div>
                           )}
                         </div>
-                        
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {s.is_candidate && (
-                            <button onClick={() => printCandidateCard(s)} title="Imprimir Cartão de Campanha" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-2 transition-colors">
-                              <Printer className="w-4 h-4"/>
-                            </button>
+                            <button onClick={() => printCandidateCard(s)} title="Imprimir Santinho" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-1 transition-colors"><FileText className="w-4 h-4"/></button>
+                          )}
+                          {s.is_candidate && (
+                            <button onClick={() => printBadge(s)} title="Imprimir Crachá" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-2 transition-colors"><Contact className="w-4 h-4"/></button>
                           )}
                           <button onClick={() => startEditStudent(s)} className="p-2 text-blue-500 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4"/></button>
                           <button onClick={() => handleDeleteStudent(s.id!)} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
@@ -434,5 +403,4 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     </div>
   );
 };
-
 export default ManageTurmas;
