@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, Download, Loader2, Trophy, Flame, TrendingUp, Users, Target
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, Download, Loader2, Trophy, Flame, TrendingUp, Users, Target, Image as ImageIcon, Contact
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -15,84 +15,54 @@ import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
 initMercadoPago('TEST-COLOQUE-SUA-PUBLIC-KEY-AQUI');
 
 interface ExtendedVoteRecord {
-  id?: string;
-  turma_id?: string;
-  eleicao_id?: string;
-  voter_name: string;
-  voter_document: string;
-  voter_contact: string;
-  candidate_role: string;
-  candidate_number: number | null;
-  vote_type: "candidate" | "branco" | "nulo";
-  created_at?: string;
+  id?: string; turma_id?: string; eleicao_id?: string; voter_name: string;
+  candidate_role: string; candidate_number: number | null; vote_type: "candidate" | "branco" | "nulo"; created_at?: string;
 }
 
-interface AdminLog { 
-  id: string; 
-  admin_email: string; 
-  acao: string; 
-  detalhes: string; 
-  created_at: string; 
-}
+interface AdminLog { id: string; admin_email: string; acao: string; detalhes: string; created_at: string; }
 
-type Tab = "apuracao" | "reports" | "eleicoes" | "turmas" | "admins" | "perfil" | "logs";
+type Tab = "apuracao" | "reports" | "midias" | "eleicoes" | "turmas" | "admins" | "perfil" | "logs";
 
-interface AdminPanelProps { 
-  turma: Turma | null; 
-  onBack: () => void; 
-  onTurmasChanged: () => void; 
-}
+interface AdminPanelProps { turma: Turma | null; onBack: () => void; onTurmasChanged: () => void; }
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [escolaNome, setEscolaNome] = useState("Carregando Escola...");
   const [escolaLogo, setEscolaLogo] = useState<string | null>(null); 
   const [isExpired, setIsExpired] = useState(false); 
   const [validadeStr, setValidadeStr] = useState("");
-  
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
-
   const [showVotes, setShowVotes] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("apuracao");
   const [isPrinting, setIsPrinting] = useState(false);
-  
   const [allVotes, setAllVotes] = useState<ExtendedVoteRecord[]>([]);
   const [allTurmas, setAllTurmas] = useState<{id: string, name: string}[]>([]);
   const [allCandidates, setAllCandidates] = useState<any[]>([]); 
   const [allEleicoes, setAllEleicoes] = useState<any[]>([]);
-  const [allStudents, setAllStudents] = useState<any[]>([]); // NOVO: Para Estatísticas Globais
+  const [allStudents, setAllStudents] = useState<any[]>([]); 
   const [systemLogs, setSystemLogs] = useState<AdminLog[]>([]); 
-  
   const [reportLoading, setReportLoading] = useState(false);
-  
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
-  
   const [filters, setFilters] = useState({ search: "", turmaId: turma ? turma.id : "", eleicaoId: "", voteType: "", date: "" });
   const [apuracaoTurmaId, setApuracaoTurmaId] = useState(turma ? turma.id : "");
 
-  useEffect(() => { 
-    document.documentElement.classList.remove('dark'); 
-  }, []);
+  // Filtro para a aba de Mídias
+  const [midiaSearch, setMidiaSearch] = useState("");
+
+  useEffect(() => { document.documentElement.classList.remove('dark'); }, []);
 
   const fetchAllData = async () => {
     setReportLoading(true);
-    
     const fetchEverything = async (tableName: string) => {
-      let allData: any[] = [];
-      let from = 0; const step = 1000; let fetchMore = true;
+      let allData: any[] = []; let from = 0; const step = 1000; let fetchMore = true;
       while (fetchMore) {
         const { data, error } = await supabase.from(tableName).select('*').range(from, from + step - 1);
-        if (error) { 
-          toast({ title: `Erro a buscar ${tableName}`, description: error.message, variant: "destructive" }); 
-          break; 
-        }
+        if (error) { toast({ title: `Erro a buscar dados`, description: error.message, variant: "destructive" }); break; }
         if (data && data.length > 0) {
           allData = [...allData, ...data];
           if (data.length < step) fetchMore = false; else from += step;
-        } else { 
-          fetchMore = false; 
-        }
+        } else { fetchMore = false; }
       }
       return allData;
     };
@@ -100,12 +70,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
-        const { data: adminData } = await supabase
-          .from('admins')
-          .select(`escolas (nome, valid_until, status, logo_url)`)
-          .eq('auth_id', userData.user.id)
-          .single();
-
+        const { data: adminData } = await supabase.from('admins').select(`escolas (nome, valid_until, status, logo_url)`).eq('auth_id', userData.user.id).single();
         let escolaData = null;
         if (adminData?.escolas && !Array.isArray(adminData.escolas)) escolaData = adminData.escolas as any;
         else if (adminData?.escolas && Array.isArray(adminData.escolas)) escolaData = adminData.escolas[0] as any;
@@ -115,137 +80,55 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
            if (escolaData.logo_url) setEscolaLogo(escolaData.logo_url);
            if (escolaData.valid_until) {
              const dataValidade = new Date(escolaData.valid_until);
-             const dataHoje = new Date();
              setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
-             if (dataHoje > dataValidade || escolaData.status === 'suspended') {
-               setIsExpired(true); 
-               setReportLoading(false); 
-               return; 
+             if (new Date() > dataValidade || escolaData.status === 'suspended') {
+               setIsExpired(true); setReportLoading(false); return; 
              }
            }
         }
       }
 
       const [votesData, turmasData, candidatesRes, logsData, eleicoesData, studentsData] = await Promise.all([
-        fetchEverything('votes'),
-        fetchEverything('turmas'),
-        supabase.from("students").select("*").eq("is_candidate", true).limit(5000),
-        supabase.from("admin_logs").select("*").order('created_at', { ascending: false }).limit(200),
-        fetchEverything('eleicoes'),
-        fetchEverything('students') // Busca eleitores para a Gamificação
+        fetchEverything('votes'), fetchEverything('turmas'), supabase.from("students").select("*").eq("is_candidate", true).limit(5000),
+        supabase.from("admin_logs").select("*").order('created_at', { ascending: false }).limit(200), fetchEverything('eleicoes'), fetchEverything('students')
       ]);
 
-      const sortedVotes = votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setAllVotes(sortedVotes as ExtendedVoteRecord[]);
+      setAllVotes(votesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) as ExtendedVoteRecord[]);
       if (studentsData) setAllStudents(studentsData);
-      
       if (turmasData) {
-        const sortedTurmas = turmasData.sort((a, b) => a.name.localeCompare(b.name));
-        setAllTurmas(sortedTurmas);
-        if (!apuracaoTurmaId && sortedTurmas.length > 0) setApuracaoTurmaId(sortedTurmas[0].id);
+        const sorted = turmasData.sort((a, b) => a.name.localeCompare(b.name));
+        setAllTurmas(sorted);
+        if (!apuracaoTurmaId && sorted.length > 0) setApuracaoTurmaId(sorted[0].id);
       }
-      
       if (candidatesRes.data) setAllCandidates(candidatesRes.data);
       if (logsData.data) setSystemLogs(logsData.data);
-      if (eleicoesData) {
-        const sortedEleicoes = eleicoesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setAllEleicoes(sortedEleicoes);
-      }
-
-    } catch (err) { 
-      console.error(err); 
-    }
+      if (eleicoesData) setAllEleicoes(eleicoesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    } catch (err) { console.error(err); }
     setReportLoading(false);
   };
 
-  const gerarCobrancaMercadoPago = async () => {
-    setLoadingPayment(true);
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      const { data, error } = await supabase.functions.invoke('create-preference', {
-        body: { escolaNome: escolaNome, adminEmail: userData?.user?.email || 'contato@escola.com' }
-      });
-      if (error) throw error;
-      if (data?.preferenceId) setPreferenceId(data.preferenceId);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingPayment(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isExpired && escolaNome !== "Carregando Escola..." && !preferenceId) gerarCobrancaMercadoPago();
-  }, [isExpired, escolaNome]);
-
-  const logAction = async (acao: string, detalhes: string) => {
-    const { data } = await supabase.auth.getUser();
-    if (data?.user?.email) {
-      await supabase.from('admin_logs').insert({ admin_email: data.user.email, acao, detalhes });
-    }
-  };
-
-  const handleDeleteVote = async (id: string, voterName: string) => {
-    if (!confirm("Atenção! Excluir este voto permanentemente?")) return;
-    const { error } = await supabase.from('votes').delete().eq('id', id);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Sucesso", description: "Voto excluído com sucesso." });
-      setAllVotes(allVotes.filter(v => v.id !== id));
-      logAction("EXCLUSÃO DE VOTO", `Voto de ${voterName} deletado da auditoria.`);
-    }
-  };
-
-  useEffect(() => {
-    if (["reports", "apuracao", "logs"].includes(activeTab)) fetchAllData();
-  }, [activeTab]);
-
-  useEffect(() => { setCurrentPage(1); }, [filters]); 
+  useEffect(() => { if (["reports", "apuracao", "logs", "midias"].includes(activeTab)) fetchAllData(); }, [activeTab]);
 
   const getTurmaName = (id?: string) => allTurmas.find(t => t.id === id)?.name || "Desconhecida";
   const getEleicaoNome = (id?: string) => allEleicoes.find(e => e.id === id)?.nome || "Histórico Geral";
 
-  // =========================================================================
-  // MOTOR DE GAMIFICAÇÃO E ESTATÍSTICAS
-  // =========================================================================
+  // GAMIFICAÇÃO
   const estatisticasEscola = useMemo(() => {
     const totalEleitores = allStudents.length;
-    // Pega o número de eleitores ÚNICOS que votaram (pois um aluno pode ter 3 votos no banco por causa dos múltiplos segmentos)
     const eleitoresQueVotaram = new Set(allVotes.map(v => v.voter_name)).size; 
-    
     const comparecimento = totalEleitores > 0 ? (eleitoresQueVotaram / totalEleitores) * 100 : 0;
-    const abstencao = totalEleitores > 0 ? 100 - comparecimento : 0;
-
-    return {
-      total: totalEleitores,
-      votaram: eleitoresQueVotaram,
-      comparecimento: comparecimento.toFixed(1),
-      abstencao: abstencao.toFixed(1),
-      isHot: comparecimento >= 75 // Fogo se mais de 75% da escola já votou
-    };
+    return { total: totalEleitores, votaram: eleitoresQueVotaram, comparecimento: comparecimento.toFixed(1), abstencao: (totalEleitores > 0 ? 100 - comparecimento : 0).toFixed(1), isHot: comparecimento >= 75 };
   }, [allStudents, allVotes]);
 
   const rankingTurmas = useMemo(() => {
     const ranking = allTurmas.map(turma => {
       const alunosDaTurma = allStudents.filter(s => s.turma_id === turma.id).length;
-      // Eleitores únicos que votaram e são desta turma
       const votosDaTurma = new Set(allVotes.filter(v => v.turma_id === turma.id).map(v => v.voter_name)).size;
       const engajamento = alunosDaTurma > 0 ? (votosDaTurma / alunosDaTurma) * 100 : 0;
-      
-      return {
-        id: turma.id,
-        nome: turma.name,
-        alunos: alunosDaTurma,
-        votos: votosDaTurma,
-        engajamento: parseFloat(engajamento.toFixed(1))
-      };
+      return { id: turma.id, nome: turma.name, alunos: alunosDaTurma, votos: votosDaTurma, engajamento: parseFloat(engajamento.toFixed(1)) };
     });
-
-    // Ordena do maior engajamento para o menor e pega o Top 5
     return ranking.sort((a, b) => b.engajamento - a.engajamento).filter(t => t.alunos > 0).slice(0, 5);
   }, [allTurmas, allStudents, allVotes]);
-
 
   const apuracaoOverview = useMemo(() => {
     if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
@@ -283,9 +166,165 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     });
   }, [apuracaoTurmaId, allVotes, allCandidates]);
 
-  const exportToCSV = () => { /* ... mantido igual ... */ };
-  const printDashboardReport = () => { /* ... mantido igual ... */ };
-  const printFilteredReport = () => { /* ... mantido igual ... */ };
+  // ========================================================================
+  // EXPORTAÇÕES E RELATÓRIOS
+  // ========================================================================
+  const exportToCSV = () => {
+    if (filteredReport.length === 0) {
+      toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
+      return;
+    }
+    let csvContent = "Data/Hora,Eleicao,Turma,Eleitor,Cargo,Voto_Computado\n";
+    filteredReport.forEach(v => {
+      const data = v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-';
+      const eleicao = getEleicaoNome(v.eleicao_id).replace(/,/g, ''); 
+      const turma = getTurmaName(v.turma_id).replace(/,/g, '');
+      const eleitor = v.voter_name.replace(/,/g, '');
+      const cargo = v.candidate_role || 'Líder Geral';
+      let voto = "";
+      if (!showVotes) voto = "SIGILO ATIVO";
+      else voto = v.vote_type === 'candidate' ? `Chapa ${v.candidate_number}` : v.vote_type.toUpperCase();
+      csvContent += `${data},${eleicao},${turma},${eleitor},${cargo},${voto}\n`;
+    });
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Auditoria_Votos_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "Sucesso", description: "Download do arquivo Excel concluído!" });
+  };
+
+  const printDashboardReport = () => {
+    setIsPrinting(true);
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    const turmaName = escapeHtml(getTurmaName(apuracaoTurmaId));
+    const nomeDaEscolaSeguro = escapeHtml(escolaNome);
+
+    let rolesHtml = '';
+    if (apuracaoResults && apuracaoResults.length > 0) {
+      rolesHtml = apuracaoResults.map(result => {
+        let candidatesHtml = result.candidateResults.map((c: any, idx: number) => `
+          <tr>
+            <td style="text-align: center; font-weight: bold;">${idx + 1}º</td>
+            <td><strong>${escapeHtml(c.name)}</strong> ${c.vice_name ? `<br/><small style="color: #666;">Vice: ${escapeHtml(c.vice_name)}</small>` : ''}</td>
+            <td style="text-align: center; font-weight: bold;">Nº ${c.candidate_number}</td>
+            <td style="text-align: right;"><strong>${c.votes}</strong> (${c.percentage.toFixed(1)}%)</td>
+          </tr>
+        `).join('');
+        if (result.candidateResults.length === 0) candidatesHtml = `<tr><td colspan="4" style="text-align: center; color: #666; padding: 20px;">Nenhum candidato registrado para este cargo.</td></tr>`;
+        return `
+          <div class="role-section">
+            <h2>Cargo: ${escapeHtml(result.role)}</h2>
+            <table>
+              <thead><tr><th width="60" style="text-align: center;">Posição</th><th>Candidato / Chapa</th><th width="80" style="text-align: center;">Número</th><th width="120" style="text-align: right;">Votos Computados</th></tr></thead>
+              <tbody>${candidatesHtml}</tbody>
+            </table>
+            <div class="role-summary">
+              <span><strong>Brancos:</strong> ${result.brancos.votes} (${result.brancos.percentage.toFixed(1)}%)</span>
+              <span><strong>Nulos:</strong> ${result.nulos.votes} (${result.nulos.percentage.toFixed(1)}%)</span>
+              <span><strong>Total do Cargo:</strong> ${result.totalVotes}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else rolesHtml = `<p style="text-align: center; color: #666; margin-top: 40px;">Nenhum dado de votação encontrado para esta turma.</p>`;
+
+    const reportHtml = `
+      <html>
+        <head><title>Boletim de Urna - ${turmaName}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; }
+            .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; }
+            .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; }
+            .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; }
+            .overview div:last-child { border-right: none; }
+            .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; }
+            .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; }
+            .role-section { margin-bottom: 40px; page-break-inside: avoid; }
+            .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; }
+            th, td { border: 1px solid #ccc; padding: 12px; text-align: left; }
+            th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; }
+            .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; }
+            .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+            @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Boletim de Urna - Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #333;">Turma: ${turmaName}</h3></div>
+          <div class="overview">
+            <div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div>
+            <div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div>
+            <div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div>
+            <div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div>
+          </div>
+          ${rolesHtml}
+          <div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank");
+    if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
+  };
+
+  const printFilteredReport = () => {
+    setIsPrinting(true);
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    const nomeDaEscolaSeguro = escapeHtml(escolaNome);
+
+    const rows = filteredReport.map(v => `
+      <tr>
+        <td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td>
+        <td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td>
+        <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
+        <td><strong>${escapeHtml(v.voter_name)}</strong></td>
+        <td style="text-align: center; font-weight: bold;">
+          ${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}
+          ${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
+        </td>
+      </tr>
+    `).join("");
+
+    const reportHtml = `
+      <html>
+        <head><title>Auditoria de Votação - ${nomeDaEscolaSeguro}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
+            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; }
+            .sub { color: #666; font-size: 14px; margin-top: 5px; }
+            .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+            th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; }
+            .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+            @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Relatório Oficial de Auditoria Cadastral</div></div>
+          <div class="filters">
+            <strong>Filtros aplicados na pesquisa:</strong><br/>
+            Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}
+          </div>
+          <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
+          <table><thead><tr><th>Data/Hora</th><th>Eleição</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead><tbody>${rows}</tbody></table>
+          <div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank");
+    if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
+  };
 
   const filteredReport = useMemo(() => {
     return allVotes.filter(v => {
@@ -302,10 +341,143 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const totalPages = Math.ceil(filteredReport.length / itemsPerPage);
   const paginatedReport = filteredReport.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  // ========================================================================
+  // GERADORES DE PDF (MÍDIAS)
+  // ========================================================================
+  const printCandidateCard = (candidate: any) => {
+    setIsPrinting(true);
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
+    const turmaName = getTurmaName(candidate.turma_id);
+    
+    const cardHtml = `
+      <html>
+        <head>
+          <title>Santinho - ${escapeHtml(candidate.name)}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f4f4f5; }
+            .card { width: 350px; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border: 2px solid #e2e8f0; }
+            .header { background: linear-gradient(135deg, #1d4ed8, #1e3a8a); padding: 30px 20px; text-align: center; color: white; position: relative; }
+            .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 6px; background: #ef4444; }
+            .school { font-size: 10px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #93c5fd; margin-bottom: 5px; }
+            .role { font-size: 22px; font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1.1; }
+            .turma { font-size: 12px; font-weight: bold; background: rgba(255,255,255,0.2); display: inline-block; padding: 4px 12px; border-radius: 20px; margin-top: 10px; }
+            .body { padding: 30px 20px; text-align: center; background: white; }
+            .number-box { background: #f8fafc; border: 3px solid #cbd5e1; border-radius: 16px; display: inline-block; padding: 10px 30px; margin-bottom: 20px; }
+            .number-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: -5px; }
+            .number { font-size: 56px; font-weight: 900; color: #0f172a; margin: 0; line-height: 1; }
+            .name { font-size: 24px; font-weight: 900; color: #1e293b; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; }
+            .footer { background: #0f172a; color: #94a3b8; text-align: center; padding: 15px; font-size: 9px; font-weight: bold; text-transform: uppercase; }
+            @media print { body { background: white; display: block; } .card { box-shadow: none; margin: 0 auto; } }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="header"><div class="school">${escapeHtml(escolaNome)}</div><h1 class="role">${primaryRole}</h1><div class="turma">Turma: ${escapeHtml(turmaName)}</div></div>
+            <div class="body">
+              <div class="number-box"><span class="number-label">Vote</span><p class="number">${candidate.candidate_number}</p></div>
+              <h2 class="name">${escapeHtml(candidate.name)}</h2>
+              ${candidate.vice_name ? `<p style="font-weight:bold; color:#64748b;">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}
+            </div>
+            <div class="footer">Sistema Oficial de Votação</div>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank", "width=500,height=700");
+    if (printWindow) { printWindow.document.write(cardHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
+  };
+
+  const printBadge = (candidate: any) => {
+    setIsPrinting(true);
+    const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
+    const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
+    
+    const badgeHtml = `
+      <html>
+        <head>
+          <title>Crachá Oficial - ${escapeHtml(candidate.name)}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #e2e8f0; }
+            .badge { width: 54mm; height: 86mm; background: white; border-radius: 8px; box-sizing: border-box; border: 1px solid #cbd5e1; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+            .hole-punch { width: 14mm; height: 3mm; border-radius: 5px; border: 1px solid #cbd5e1; position: absolute; top: 4mm; background: #f8fafc; z-index: 10; }
+            .header { width: 100%; height: 25mm; background: #1e3a8a; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 2mm; }
+            .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5mm; background: #ef4444; }
+            .school-name { color: #bfdbfe; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
+            .photo-area { width: 28mm; height: 35mm; border: 2px solid #cbd5e1; background: #f1f5f9; margin-top: 5mm; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 8px; font-weight: bold; text-transform: uppercase; }
+            .info-area { text-align: center; margin-top: 3mm; padding: 0 4mm; width: 100%; box-sizing: border-box; }
+            .name { font-size: 14px; font-weight: 900; color: #0f172a; text-transform: uppercase; line-height: 1; margin: 0; }
+            .role { font-size: 9px; font-weight: 900; color: #ef4444; text-transform: uppercase; margin: 2mm 0 0 0; }
+            .number-badge { margin-top: 2mm; background: #0f172a; color: white; display: inline-block; padding: 1mm 4mm; border-radius: 4px; font-size: 16px; font-weight: 900; }
+            @media print {
+              body { background: white; }
+              .badge { box-shadow: none; border: 1px dashed #ccc; }
+              .hole-punch { border: 1px dashed #999; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="badge">
+            <div class="hole-punch"></div>
+            <div class="header"><span class="school-name">${escapeHtml(escolaNome)}</span></div>
+            <div class="photo-area">3x4 FOTO</div>
+            <div class="info-area">
+              <h1 class="name">${escapeHtml(candidate.name)}</h1>
+              <h2 class="role">${primaryRole}</h2>
+              <div class="number-badge">${candidate.candidate_number}</div>
+            </div>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank", "width=400,height=600");
+    if (printWindow) { printWindow.document.write(badgeHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
+  };
+
+  const gerarCobrancaMercadoPago = async () => {
+    setLoadingPayment(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const { data, error } = await supabase.functions.invoke('create-preference', { body: { escolaNome: escolaNome, adminEmail: userData?.user?.email || 'contato@escola.com' } });
+      if (error) throw error;
+      if (data?.preferenceId) setPreferenceId(data.preferenceId);
+    } catch (err) { console.error(err); } finally { setLoadingPayment(false); }
+  };
+
+  const handleDeleteVote = async (id: string, voterName: string) => {
+    if (!confirm("Atenção! Excluir este voto permanentemente?")) return;
+    const { error } = await supabase.from('votes').delete().eq('id', id);
+    if (!error) {
+      setAllVotes(allVotes.filter(v => v.id !== id));
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user?.email) await supabase.from('admin_logs').insert({ admin_email: userData.user.email, acao: "EXCLUSÃO DE VOTO", detalhes: `Voto de ${voterName} deletado da auditoria.` });
+      toast({ title: "Sucesso", description: "Voto excluído com sucesso." });
+    }
+  };
+
   if (isExpired) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
-        {/* Tela de Bloqueio Mantida */}
+        <div className="absolute inset-0 bg-blue-600/10 blur-[100px] pointer-events-none rounded-full w-full h-full"></div>
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden p-8 text-center space-y-6 animate-in zoom-in-95 duration-500 relative z-10 border border-slate-200">
+            <AlertTriangle className="w-16 h-16 mx-auto text-red-600 mb-2 drop-shadow-md" />
+            <h1 className="text-2xl font-black uppercase tracking-tight text-slate-800">Acesso Expirado</h1>
+            <p className="text-slate-500 font-medium">Sua chave de acesso venceu. Para continuar gerenciando eleições na <strong>{escolaNome}</strong>, renove a licença.</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-inner">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Valor da Renovação</p>
+              <p className="text-4xl font-black text-blue-600 mb-6">R$ 197<span className="text-lg text-slate-400">/mês</span></p>
+              {loadingPayment ? (
+                <div className="flex flex-col items-center justify-center py-6 gap-3"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /><p className="text-xs font-bold text-slate-500 uppercase">Conectando ao Mercado Pago...</p></div>
+              ) : preferenceId ? (
+                <div id="wallet_container" className="animate-in fade-in duration-500"><Wallet initialization={{ preferenceId: preferenceId }} customization={{ texts: { valueProp: 'security_safety' } }} /></div>
+              ) : (
+                <button onClick={gerarCobrancaMercadoPago} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-colors uppercase tracking-widest text-sm">Tentar Novamente</button>
+              )}
+            </div>
+            <button onClick={onBack} className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors pt-2 uppercase tracking-widest">Voltar ao Início</button>
+        </div>
       </div>
     );
   }
@@ -327,7 +499,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       </div>
 
       <div className="w-full max-w-[1200px] flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm mb-6 justify-center">
-        {(["apuracao", "reports", "eleicoes", "turmas", "admins", "logs", "perfil"] as Tab[]).map((tab) => (
+        {(["apuracao", "midias", "reports", "eleicoes", "turmas", "admins", "logs", "perfil"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -336,6 +508,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             }`}
           >
             {tab === "apuracao" && <BarChart3 className="w-4 h-4" />}
+            {tab === "midias" && <ImageIcon className="w-4 h-4" />}
             {tab === "reports" && <FileText className="w-4 h-4" />}
             {tab === "eleicoes" && <CheckSquare className="w-4 h-4" />}
             {tab === "turmas" && <GraduationCap className="w-4 h-4" />}
@@ -350,17 +523,13 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       </div>
 
       <div className="w-full max-w-[1200px]">
-
         {/* ================================================= */}
         {/* ABA DE APURAÇÃO (DASHBOARD & GAMIFICAÇÃO) */}
         {/* ================================================= */}
         {activeTab === "apuracao" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            
-            {/* PAINEL DE GAMIFICAÇÃO (TERMOÔMETRO DA ESCOLA) */}
             <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-6 md:p-8 rounded-2xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-8 border border-slate-800 relative overflow-hidden">
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
-              
               <div className="flex-1 w-full z-10">
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`p-2 rounded-full ${estatisticasEscola.isHot ? 'bg-orange-500 text-white animate-pulse shadow-[0_0_15px_rgba(249,115,22,0.5)]' : 'bg-blue-500 text-white'}`}>
@@ -369,86 +538,41 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <h2 className="text-xl font-black uppercase tracking-widest text-slate-100">Termômetro da Democracia</h2>
                 </div>
                 <p className="text-sm text-slate-400 font-medium mb-6">Acompanhe o engajamento geral da escola em tempo real.</p>
-                
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Eleitorado Total</p>
-                    <p className="text-3xl font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-slate-500"/> {estatisticasEscola.total}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Já Votaram</p>
-                    <p className="text-3xl font-black text-white flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-500"/> {estatisticasEscola.votaram}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Comparecimento</p>
-                    <p className="text-3xl font-black text-blue-400">{estatisticasEscola.comparecimento}%</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Abstenção Atual</p>
-                    <p className="text-3xl font-black text-red-400">{estatisticasEscola.abstencao}%</p>
-                  </div>
+                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Eleitorado Total</p><p className="text-3xl font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-slate-500"/> {estatisticasEscola.total}</p></div>
+                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Já Votaram</p><p className="text-3xl font-black text-white flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-500"/> {estatisticasEscola.votaram}</p></div>
+                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Comparecimento</p><p className="text-3xl font-black text-blue-400">{estatisticasEscola.comparecimento}%</p></div>
+                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Abstenção Atual</p><p className="text-3xl font-black text-red-400">{estatisticasEscola.abstencao}%</p></div>
                 </div>
-
-                <div className="mt-6">
-                  <div className="w-full bg-slate-800 rounded-full h-3 mb-1 border border-slate-700 overflow-hidden">
-                    <div className={`h-3 rounded-full transition-all duration-1000 ${estatisticasEscola.isHot ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-blue-500'}`} style={{ width: `${estatisticasEscola.comparecimento}%` }}></div>
-                  </div>
-                </div>
+                <div className="mt-6"><div className="w-full bg-slate-800 rounded-full h-3 mb-1 border border-slate-700 overflow-hidden"><div className={`h-3 rounded-full transition-all duration-1000 ${estatisticasEscola.isHot ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-blue-500'}`} style={{ width: `${estatisticasEscola.comparecimento}%` }}></div></div></div>
               </div>
-
-              {/* O PÓDIO - RANKING DE TURMAS */}
               <div className="w-full md:w-80 bg-white/10 backdrop-blur-sm border border-white/20 p-5 rounded-2xl z-10 flex flex-col">
-                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
-                  <Trophy className="w-5 h-5 text-yellow-500" />
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Ranking de Cidadania</h3>
-                </div>
-                
+                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2"><Trophy className="w-5 h-5 text-yellow-500" /><h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Ranking de Cidadania</h3></div>
                 <div className="space-y-3">
-                  {rankingTurmas.length === 0 ? (
-                    <p className="text-xs text-slate-400 text-center py-4">Aguardando votos...</p>
-                  ) : (
-                    rankingTurmas.map((turma, index) => (
+                  {rankingTurmas.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">Aguardando votos...</p> : rankingTurmas.map((turma, index) => (
                       <div key={turma.id} className="flex items-center justify-between group">
                         <div className="flex items-center gap-3">
-                          <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-black ${index === 0 ? 'bg-yellow-500 text-slate-900 shadow-[0_0_10px_rgba(234,179,8,0.4)]' : index === 1 ? 'bg-slate-300 text-slate-800' : index === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                            {index + 1}
-                          </span>
+                          <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-black ${index === 0 ? 'bg-yellow-500 text-slate-900 shadow-[0_0_10px_rgba(234,179,8,0.4)]' : index === 1 ? 'bg-slate-300 text-slate-800' : index === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400'}`}>{index + 1}</span>
                           <p className="text-sm font-bold text-slate-200">{turma.nome}</p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-black text-white">{turma.engajamento}%</p>
-                        </div>
+                        <div className="text-right"><p className="text-sm font-black text-white">{turma.engajamento}%</p></div>
                       </div>
-                    ))
-                  )}
+                    ))}
                 </div>
               </div>
             </div>
 
-            {/* APURAÇÃO POR TURMA (O QUE JÁ EXISTIA) */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 mt-8">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Target className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800 tracking-tight">Apuração Detalhada</h2>
-                  <p className="text-sm text-slate-500 font-medium">Selecione uma turma para ver a contagem exata dos candidatos.</p>
-                </div>
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><Target className="w-6 h-6 text-blue-600" /></div>
+                <div><h2 className="text-xl font-black text-slate-800 tracking-tight">Apuração Detalhada</h2><p className="text-sm text-slate-500 font-medium">Selecione uma turma para ver a contagem exata dos candidatos.</p></div>
               </div>
               <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-                <select 
-                  className="w-full md:w-64 p-3 border-2 border-slate-200 rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-blue-500 transition-colors" 
-                  value={apuracaoTurmaId} 
-                  onChange={e => setApuracaoTurmaId(e.target.value)}
-                >
+                <select className="w-full md:w-64 p-3 border-2 border-slate-200 rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-blue-500 transition-colors" value={apuracaoTurmaId} onChange={e => setApuracaoTurmaId(e.target.value)}>
                   <option value="" disabled>Selecione a Turma...</option>
                   {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
-                
-                <button onClick={printDashboardReport} disabled={isPrinting || !apuracaoTurmaId} className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50">
-                  <Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF"}
-                </button>
+                <button onClick={printDashboardReport} disabled={isPrinting || !apuracaoTurmaId} className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"><Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF"}</button>
               </div>
             </div>
 
@@ -469,11 +593,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {apuracaoResults?.map((result, idx) => (
                   <div key={idx} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-                    <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
-                      <h3 className="text-lg font-black uppercase tracking-widest">{result.role}</h3>
-                      <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos no cargo</span>
-                    </div>
-                    
+                    <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><h3 className="text-lg font-black uppercase tracking-widest">{result.role}</h3><span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos no cargo</span></div>
                     <div className="p-6 flex-1 space-y-6">
                       {result.candidateResults.length === 0 ? (
                         <p className="text-sm text-slate-400 text-center py-4">Nenhum candidato cadastrado para este cargo.</p>
@@ -483,15 +603,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                             <div className="flex items-center gap-4 mb-2">
                               <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-end mb-1">
-                                  <p className="font-bold text-slate-800 truncate pr-2 flex items-center gap-1">
-                                    {cIdx === 0 && result.totalVotes > 0 && <CheckCircle2 className="w-4 h-4 text-green-500 inline" />}
-                                    {cand.name} <span className="text-slate-400 font-normal text-xs">(Nº {cand.candidate_number})</span>
-                                  </p>
+                                  <p className="font-bold text-slate-800 truncate pr-2 flex items-center gap-1">{cIdx === 0 && result.totalVotes > 0 && <CheckCircle2 className="w-4 h-4 text-green-500 inline" />}{cand.name} <span className="text-slate-400 font-normal text-xs">(Nº {cand.candidate_number})</span></p>
                                   <p className="font-black text-blue-600 text-lg leading-none">{cand.votes}</p>
                                 </div>
-                                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden flex">
-                                  <div className={`h-full transition-all duration-1000 ${cIdx === 0 && cand.votes > 0 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${cand.percentage}%` }}></div>
-                                </div>
+                                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden flex"><div className={`h-full transition-all duration-1000 ${cIdx === 0 && cand.votes > 0 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${cand.percentage}%` }}></div></div>
                                 <p className="text-[10px] text-slate-400 text-right mt-1 font-bold">{cand.percentage.toFixed(1)}% dos votos</p>
                               </div>
                             </div>
@@ -499,16 +614,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                         ))
                       )}
                     </div>
-
                     <div className="bg-slate-50 border-t border-slate-200 p-4 grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Brancos</span><span>{result.brancos.votes}</span></div>
-                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"><div className="bg-slate-400 h-full transition-all duration-1000" style={{ width: `${result.brancos.percentage}%` }}></div></div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Nulos</span><span>{result.nulos.votes}</span></div>
-                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"><div className="bg-orange-500 h-full transition-all duration-1000" style={{ width: `${result.nulos.percentage}%` }}></div></div>
-                      </div>
+                      <div><div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Brancos</span><span>{result.brancos.votes}</span></div><div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"><div className="bg-slate-400 h-full transition-all duration-1000" style={{ width: `${result.brancos.percentage}%` }}></div></div></div>
+                      <div><div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Nulos</span><span>{result.nulos.votes}</span></div><div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"><div className="bg-orange-500 h-full transition-all duration-1000" style={{ width: `${result.nulos.percentage}%` }}></div></div></div>
                     </div>
                   </div>
                 ))}
@@ -517,13 +625,137 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* OUTRAS ABAS MANTIDAS IGUAIS (Reports, Logs, Turmas, Eleicoes, Perfil) */}
-        {activeTab === "reports" && <div className="animate-in fade-in duration-300"> {/* Aqui ficava a auditoria que eu mantenho intacta na sua máquina */} 
-             <div className="p-8 text-center bg-white rounded-xl shadow-sm border border-slate-200"><p className="font-bold text-slate-500">Módulo de Auditoria Mantido Conforme Original</p></div>
-        </div>}
-        {activeTab === "logs" && <div className="animate-in fade-in duration-300"> {/* Logs mantidos */} 
-             <div className="p-8 text-center bg-white rounded-xl shadow-sm border border-slate-200"><p className="font-bold text-slate-500">Módulo de Logs Mantido Conforme Original</p></div>
-        </div>}
+        {/* ================================================= */}
+        {/* ABA: MÍDIAS E MARKETING (SANTINHOS E CRACHÁS) */}
+        {/* ================================================= */}
+        {activeTab === "midias" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><ImageIcon className="w-6 h-6 text-blue-600" /> Estúdio de Campanhas</h2>
+                <p className="text-sm text-slate-500 font-medium">Gere santinhos virtuais e crachás de identificação em formato PDF para os candidatos.</p>
+              </div>
+              <div className="relative w-full md:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input type="text" placeholder="Buscar candidato..." className="w-full pl-9 p-2.5 border rounded-lg text-sm bg-slate-50 outline-none focus:border-blue-500" value={midiaSearch} onChange={e => setMidiaSearch(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {reportLoading ? (
+                <div className="col-span-full py-12 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto" /></div>
+              ) : allCandidates.filter(c => c.name.toLowerCase().includes(midiaSearch.toLowerCase())).length === 0 ? (
+                <div className="col-span-full py-12 text-center text-slate-400">Nenhum candidato encontrado.</div>
+              ) : (
+                allCandidates.filter(c => c.name.toLowerCase().includes(midiaSearch.toLowerCase())).map(cand => (
+                  <div key={cand.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-black text-slate-800 text-lg leading-tight">{cand.name}</h3>
+                        <p className="text-xs text-slate-400 font-bold mt-1">Nº {cand.candidate_number} • Turma: {getTurmaName(cand.turma_id)}</p>
+                      </div>
+                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 font-bold text-xs border border-slate-200">Foto</div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-1 mb-6">
+                      {cand.candidate_role?.split(',').map((role: string, i: number) => (
+                        <span key={i} className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 uppercase font-bold">{role.trim()}</span>
+                      ))}
+                    </div>
+
+                    <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                      <button onClick={() => printCandidateCard(cand)} disabled={isPrinting} className="bg-blue-50 text-blue-700 hover:bg-blue-100 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"><FileText className="w-3.5 h-3.5" /> Santinho</button>
+                      <button onClick={() => printBadge(cand)} disabled={isPrinting} className="bg-slate-900 text-white hover:bg-slate-800 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"><Contact className="w-3.5 h-3.5" /> Crachá Oficial</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================================================= */}
+        {/* ABA: AUDITORIA (REPORTS E CSV COMPLETOS) */}
+        {/* ================================================= */}
+        {activeTab === "reports" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3"><Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label><div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Nome" className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} /></div></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Eleição</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value})}><option value="">Todas as Eleições</option>{allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Turma</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}><option value="">Todas as Turmas</option>{allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Tipo de Voto</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}><option value="">Todos</option><option value="candidate">Válidos (Candidatos)</option><option value="branco">Em Branco</option><option value="nulo">Nulos</option></select></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Data da Votação</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} /></div></div>
+              </div>
+              
+              <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
+                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
+                <div className="flex gap-2 w-full md:w-auto">
+                  <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"><Download className="w-4 h-4" /> Exportar Planilha (Excel)</button>
+                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"><Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF"}</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-slate-50 flex justify-between items-center"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span><button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">{showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR VOTOS" : "REVELAR VOTOS"}</button></div>
+              <div className="overflow-x-auto min-h-[400px]">
+                {reportLoading ? (
+                  <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Carregando milhões de registros...</div>
+                ) : paginatedReport.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">Nenhum voto encontrado para estes filtros.</div>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10"><tr className="text-[10px] text-slate-500 uppercase"><th className="p-4 font-black">Data/Hora</th><th className="p-4 font-black">Eleição</th><th className="p-4 font-black">Turma</th><th className="p-4 font-black">Eleitor</th><th className="p-4 font-black text-center">Voto Computado</th><th className="p-4 font-black text-center">Ação</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedReport.map((v, i) => (
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
+                          <td className="p-4 font-semibold text-slate-700 text-xs">{getEleicaoNome(v.eleicao_id)}</td>
+                          <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
+                          <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name}</p></td>
+                          <td className="p-4 text-center">
+                            {showVotes ? (
+                              <><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">{v.candidate_role || 'Geral'}</span><span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>{v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}</span></>
+                            ) : (
+                              <span className="text-slate-300 italic text-xs flex justify-center items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center"><button onClick={() => handleDeleteVote(v.id!, v.voter_name)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir voto"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              {totalPages > 1 && (
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center"><p className="text-xs text-slate-500 font-bold">Página {currentPage} de {totalPages}</p><div className="flex gap-2"><button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronRight className="w-4 h-4" /></button></div></div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================================================= */}
+        {/* ABA: LOGS DE SEGURANÇA MANTIDOS */}
+        {/* ================================================= */}
+        {activeTab === "logs" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
+            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div><div><h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2><p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p></div></div>
+            <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+              {systemLogs.length === 0 && <p className="text-center text-sm text-slate-400 py-10">Nenhuma ação sensível registada recentemente.</p>}
+              {systemLogs.map(log => (
+                <div key={log.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-slate-100 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <div className="md:w-48 text-xs text-slate-400 font-mono font-bold flex-shrink-0">{new Date(log.created_at).toLocaleString('pt-BR')}</div>
+                  <div className="flex-1"><div className="flex items-center gap-2 mb-1"><span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">{log.acao}</span><span className="text-xs font-bold text-slate-600">{log.admin_email}</span></div><p className="text-sm font-medium text-slate-800">{log.detalhes}</p></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* DEMAIS ABAS */}
         {activeTab === "eleicoes" && <div className="animate-in fade-in duration-300"><ManageEleicoes /></div>}
         {activeTab === "turmas" && <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageTurmas onTurmasChanged={onTurmasChanged} /></div>}
         {activeTab === "admins" && <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageAdmins /></div>}
