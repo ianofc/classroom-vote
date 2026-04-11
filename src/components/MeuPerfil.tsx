@@ -3,7 +3,11 @@ import { supabase } from "@/lib/supabase";
 import { User, Camera, Loader2, Save, BadgeCheck, Building2, Image as ImageIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
-export default function MeuPerfil({ escolaNome }: { escolaNome: string }) {
+interface MeuPerfilProps {
+  escolaNome: string;
+}
+
+export default function MeuPerfil({ escolaNome }: MeuPerfilProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [escolaId, setEscolaId] = useState("");
@@ -13,7 +17,7 @@ export default function MeuPerfil({ escolaNome }: { escolaNome: string }) {
     cargo: "",
     bio: "",
     avatar_url: "",
-    logo_url: "" // NOVO: Logo da escola
+    logo_url: ""
   });
 
   useEffect(() => {
@@ -53,6 +57,8 @@ export default function MeuPerfil({ escolaNome }: { escolaNome: string }) {
     try {
       setSaving(true);
       const file = event.target.files[0];
+      if (!file) return;
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
       const bucket = tipo === 'avatar' ? 'avatars' : 'escolas-logos';
@@ -111,35 +117,60 @@ export default function MeuPerfil({ escolaNome }: { escolaNome: string }) {
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
 
   return (
-    <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-500">
       
       {/* COLUNA 1: PERFIL DO GESTOR */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
         <div className="h-24 bg-gradient-to-r from-blue-600 to-indigo-800 relative"></div>
         <div className="px-6 pb-6 flex-1 flex flex-col">
           <div className="relative w-20 h-20 -mt-10 mb-4 rounded-full border-4 border-white bg-slate-100 flex items-center justify-center shadow-md overflow-hidden group">
-            {perfil.avatar_url ? <img src={perfil.avatar_url} alt="Avatar" className="w-full h-full object-cover" /> : <User className="w-8 h-8 text-slate-400" />}
+            {perfil.avatar_url ? (
+              <img src={perfil.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-8 h-8 text-slate-400" />
+            )}
             <label className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center cursor-pointer transition-all">
               <Camera className="w-5 h-5 text-white" />
               <input type="file" accept="image/*" onChange={(e) => uploadImagem(e, 'avatar')} className="hidden" disabled={saving} />
             </label>
           </div>
+          
           <div>
-            <h2 className="text-xl font-black text-slate-800 flex items-center gap-1.5">{perfil.nome_completo || "Gestor Anônimo"} <BadgeCheck className="w-4 h-4 text-blue-500" /></h2>
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-1.5">
+              {perfil.nome_completo || "Gestor Anônimo"} <BadgeCheck className="w-4 h-4 text-blue-500" />
+            </h2>
             <p className="text-xs font-bold text-slate-500">{perfil.cargo} em {escolaNome}</p>
           </div>
+          
           <div className="mt-6 space-y-4 flex-1">
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo</label>
-              <input type="text" className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50" value={perfil.nome_completo} onChange={e => setPerfil({...perfil, nome_completo: e.target.value})} placeholder="Seu nome" />
+              <input 
+                type="text" 
+                className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50" 
+                value={perfil.nome_completo} 
+                onChange={e => setPerfil({...perfil, nome_completo: e.target.value})} 
+                placeholder="Seu nome" 
+              />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Cargo</label>
-              <input type="text" className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50" value={perfil.cargo} onChange={e => setPerfil({...perfil, cargo: e.target.value})} placeholder="Diretor, Professor..." />
+              <input 
+                type="text" 
+                className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50" 
+                value={perfil.cargo} 
+                onChange={e => setPerfil({...perfil, cargo: e.target.value})} 
+                placeholder="Diretor, Professor..." 
+              />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Mini Bio</label>
-              <textarea className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 h-20 resize-none" value={perfil.bio} onChange={e => setPerfil({...perfil, bio: e.target.value})} placeholder="Sua descrição..." />
+              <textarea 
+                className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 h-20 resize-none" 
+                value={perfil.bio} 
+                onChange={e => setPerfil({...perfil, bio: e.target.value})} 
+                placeholder="Sua descrição..." 
+              />
             </div>
           </div>
         </div>
@@ -149,7 +180,9 @@ export default function MeuPerfil({ escolaNome }: { escolaNome: string }) {
       <div className="flex flex-col gap-6">
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><Building2 className="w-6 h-6" /></div>
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Building2 className="w-6 h-6" />
+            </div>
             <div>
               <h3 className="text-lg font-black text-slate-800">Identidade Visual</h3>
               <p className="text-xs font-medium text-slate-500">Logótipo ou Brasão oficial de {escolaNome}</p>
@@ -179,7 +212,11 @@ export default function MeuPerfil({ escolaNome }: { escolaNome: string }) {
           <p className="text-[10px] text-center text-slate-400 mt-4 font-medium">Esta imagem aparecerá no topo da Urna Eletrônica e nos relatórios em PDF.</p>
         </div>
 
-        <button onClick={salvarTudo} disabled={saving} className="w-full bg-slate-900 hover:bg-black text-white font-black uppercase tracking-widest py-5 rounded-3xl flex justify-center items-center gap-2 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 mt-auto">
+        <button 
+          onClick={salvarTudo} 
+          disabled={saving} 
+          className="w-full bg-slate-900 hover:bg-black text-white font-black uppercase tracking-widest py-5 rounded-3xl flex justify-center items-center gap-2 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 mt-auto"
+        >
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
           {saving ? "Salvando Alterações..." : "Salvar Configurações"}
         </button>
