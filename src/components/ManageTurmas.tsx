@@ -20,6 +20,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const [loading, setLoading] = useState(false);
   const [escolaId, setEscolaId] = useState<string | null>(null);
   const [escolaNome, setEscolaNome] = useState("Instituição");
+  const [escolaLogo, setEscolaLogo] = useState<string | null>(null); // Guardar o Logo para o PDF
 
   const [studentTags, setStudentTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -31,20 +32,23 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     if (userData?.user) {
-      const { data: adminData } = await supabase.from('admins').select('escolas(id, nome)').eq('auth_id', userData.user.id).single();
+      const { data: adminData } = await supabase.from('admins').select('escolas(id, nome, logo_url)').eq('auth_id', userData.user.id).single();
       
       let eId = null;
       let eNome = "Instituição";
+      let eLogo = null;
       
       if (adminData?.escolas) {
         const escolaData = Array.isArray(adminData.escolas) ? adminData.escolas[0] : adminData.escolas;
         eId = escolaData?.id;
         eNome = escolaData?.nome || "Instituição";
+        eLogo = escolaData?.logo_url || null;
       }
 
       if (eId) {
         setEscolaId(eId);
         setEscolaNome(eNome);
+        setEscolaLogo(eLogo);
         const { data } = await supabase.from('turmas').select('*').eq('escola_id', eId).order('name');
         setTurmas(data || []);
       }
@@ -63,14 +67,10 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     }
   };
 
-  // ============================================================================
-  // NOVO: GERADOR DE AMBIENTE DE TESTE
-  // ============================================================================
   const handleCreateTestEnvironment = async () => {
     if (!escolaId) return;
     setLoading(true);
     try {
-      // 1. Cria a Turma de Teste
       const { data: turmaData, error: turmaError } = await supabase
         .from('turmas')
         .insert([{ name: "Turma de Teste 🧪", escola_id: escolaId }])
@@ -79,20 +79,10 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
 
       if (turmaError) throw turmaError;
 
-      // 2. Cria os Alunos de Teste (1 Eleitor, 2 Candidatos)
       const mockStudents = [
-        { 
-          turma_id: turmaData.id, name: "Eleitor de Teste", document: "000000", 
-          is_candidate: false 
-        },
-        { 
-          turma_id: turmaData.id, name: "Candidato Alfa", document: "111111", 
-          is_candidate: true, candidate_number: 10, candidate_role: "Candidato Teste", vice_name: "Vice Beta" 
-        },
-        { 
-          turma_id: turmaData.id, name: "Candidato Ômega", document: "222222", 
-          is_candidate: true, candidate_number: 20, candidate_role: "Candidato Teste", vice_name: "Vice Delta" 
-        }
+        { turma_id: turmaData.id, name: "Eleitor de Teste", document: "000000", is_candidate: false },
+        { turma_id: turmaData.id, name: "Candidato Alfa", document: "111111", is_candidate: true, candidate_number: 10, candidate_role: "Candidato Teste", vice_name: "Vice Beta" },
+        { turma_id: turmaData.id, name: "Candidato Ômega", document: "222222", is_candidate: true, candidate_number: 20, candidate_role: "Candidato Teste", vice_name: "Vice Delta" }
       ];
 
       const { error: stdError } = await supabase.from('students').insert(mockStudents);
@@ -228,6 +218,9 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     });
   };
 
+  // ========================================================================
+  // GERADOR DE SANTINHOS PREMIUM (BLACK & GOLD)
+  // ========================================================================
   const printCandidateCard = (candidate: Student) => {
     setIsPrintingCard(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -237,45 +230,47 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     const cardHtml = `
       <html>
         <head>
-          <title>Cartão de Candidato - ${escapeHtml(candidate.name)}</title>
+          <title>Santinho - ${escapeHtml(candidate.name)}</title>
           <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f4f4f5; }
-            .card { width: 350px; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border: 2px solid #e2e8f0; }
-            .header { background: linear-gradient(135deg, #1d4ed8, #1e3a8a); padding: 30px 20px; text-align: center; color: white; position: relative; }
-            .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 6px; background: #ef4444; }
-            .school { font-size: 10px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #93c5fd; margin-bottom: 5px; }
-            .role { font-size: 22px; font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1.1; }
-            .turma { font-size: 12px; font-weight: bold; background: rgba(255,255,255,0.2); display: inline-block; padding: 4px 12px; border-radius: 20px; margin-top: 10px; }
-            .body { padding: 30px 20px; text-align: center; background: white; }
-            .number-box { background: #f8fafc; border: 3px solid #cbd5e1; border-radius: 16px; display: inline-block; padding: 10px 30px; margin-bottom: 20px; }
-            .number-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: -5px; }
-            .number { font-size: 56px; font-weight: 900; color: #0f172a; margin: 0; line-height: 1; }
-            .name { font-size: 24px; font-weight: 900; color: #1e293b; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; }
-            .vice { font-size: 14px; color: #64748b; font-weight: bold; margin: 0; }
-            .footer { background: #0f172a; color: #94a3b8; text-align: center; padding: 15px; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-            @media print {
-              body { background: white; display: block; }
-              .card { box-shadow: none; border: 2px solid #ccc; margin: 0 auto; page-break-inside: avoid; }
-            }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0f172a; }
+            .card { width: 380px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid #334155; position: relative; }
+            .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+            .header { padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+            .logo-placeholder { width: 60px; height: 60px; border-radius: 12px; background: rgba(255,255,255,0.1); margin: 0 auto 15px auto; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+            .logo-placeholder img { max-width: 100%; max-height: 100%; object-fit: contain; }
+            .school { font-size: 11px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; color: #94a3b8; margin-bottom: 5px; }
+            .role { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #f8fafc; margin: 0; line-height: 1.1; }
+            .turma { font-size: 11px; font-weight: bold; color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); background: rgba(251,191,36,0.1); display: inline-block; padding: 6px 16px; border-radius: 20px; margin-top: 15px; letter-spacing: 1px;}
+            .body { padding: 40px 30px; text-align: center; }
+            .number-box { background: rgba(0,0,0,0.3); border: 2px solid #fbbf24; border-radius: 16px; display: inline-block; padding: 15px 40px; margin-bottom: 25px; box-shadow: 0 0 20px rgba(251,191,36,0.1); }
+            .number-label { font-size: 10px; color: #fbbf24; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; display: block; margin-bottom: 5px; }
+            .number { font-size: 64px; font-weight: 900; color: #ffffff; margin: 0; line-height: 1; text-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+            .name { font-size: 28px; font-weight: 900; color: #f8fafc; text-transform: uppercase; margin: 0 0 5px 0; line-height: 1.2; letter-spacing: -0.5px; }
+            .vice { font-size: 13px; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; }
+            .footer { background: #020617; color: #475569; text-align: center; padding: 20px; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
           </style>
         </head>
         <body>
           <div class="card">
             <div class="header">
+              <div class="logo-placeholder">
+                 ${escolaLogo ? `<img src="${escolaLogo}" />` : `<span style="color:#fff; font-size: 24px;">🏛️</span>`}
+              </div>
               <div class="school">${escapeHtml(escolaNome)}</div>
               <h1 class="role">${primaryRole}</h1>
               <div class="turma">Turma: ${escapeHtml(selectedTurma?.name || '')}</div>
             </div>
             <div class="body">
               <div class="number-box">
-                <span class="number-label">Vote</span>
+                <span class="number-label">Vote Certo</span>
                 <p class="number">${candidate.candidate_number}</p>
               </div>
               <h2 class="name">${escapeHtml(candidate.name)}</h2>
               ${candidate.vice_name ? `<p class="vice">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}
             </div>
             <div class="footer">
-              Sistema Oficial de Votação<br/>Identidade Digital Autenticada
+              Credencial Oficial de Campanha
             </div>
           </div>
           <script>window.onload = function() { window.print(); }</script>
@@ -303,7 +298,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
           <button onClick={handleAddTurma} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700"><Plus className="w-4 h-4" /></button>
         </div>
 
-        {/* BOTÃO GERADOR DE AMBIENTE DE TESTE */}
         <button 
           onClick={handleCreateTestEnvironment} 
           disabled={loading || !escolaId} 
