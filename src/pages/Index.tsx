@@ -150,9 +150,8 @@ const Index = () => {
     setSearchResults(data || []);
     setSearching(false);
   };
-
-  // ============================================================================
-  // A MENTE DO TSE: LÓGICA DE TRÍADE ELEITORAL PERFEITA
+// ============================================================================
+  // A MENTE DO TSE: MÚLTIPLOS CARGOS E CÉDULA INTELIGENTE
   // ============================================================================
   const selectVoter = async (student: any) => {
     setLoadingCandidates(true);
@@ -166,66 +165,47 @@ const Index = () => {
       return;
     }
 
-    let allowedRoles: string[] = [];
+    // Fatiador de Cargos: Transforma "Líder, Ouvidor" numa lista ['líder', 'ouvidor']
+    const rolesDoAluno = student.candidate_role 
+      ? student.candidate_role.split(',').map((r: string) => r.trim().toLowerCase()) 
+      : [];
 
-    // 1. Descobre em quais eleições esse aluno vota
-    activeElections.forEach(eleicao => {
-      if (eleicao.tipo === 'universal') {
-        // UNIVERSAL: Todos da escola votam
-        if (!allowedRoles.includes(eleicao.nome)) allowedRoles.push(eleicao.nome);
-      } 
-      else if (eleicao.tipo === 'geral') {
-        // GERAL RESTRITA: Só vota quem já tem essa "TAG/Perfil"
-        if (student.candidate_role && eleicao.nome.toLowerCase() === student.candidate_role.toLowerCase()) {
-          if (!allowedRoles.includes(eleicao.nome)) allowedRoles.push(eleicao.nome);
-        }
+    // 1. Descobre a quais eleições esse aluno tem direito
+    let allowedElections = activeElections.filter(eleicao => {
+      if (eleicao.tipo === 'universal') return true; // Todos votam
+      if (eleicao.tipo === 'turma') return true;     // Todos da turma votam na sua urna local
+      if (eleicao.tipo === 'geral') {
+        // Geral Restrita: O aluno tem que ter essa TAG específica
+        return rolesDoAluno.includes(eleicao.nome.toLowerCase());
       }
-      else if (eleicao.tipo === 'turma') {
-        // TURMA: Votação interna da sala do aluno
-        if (!allowedRoles.includes(eleicao.nome)) allowedRoles.push(eleicao.nome);
-      }
+      return false;
     });
 
-    if (allowedRoles.length === 0) {
+    if (allowedElections.length === 0) {
       toast({ title: "Acesso Negado", description: "Este aluno não possui perfil para votar nas eleições atualmente abertas.", variant: "destructive" });
       setLoadingCandidates(false);
       setVoterData(null);
       return;
     }
 
-    // 2. Busca TODOS os candidatos concorrentes para os cargos autorizados
+    // 2. Busca TODOS os candidatos ativos da escola (A Urna fará o filtro cruzado)
     const { data: allCandidatesData } = await supabase
       .from('students')
       .select('*')
-      .in('candidate_role', allowedRoles)
       .eq('is_candidate', true);
 
-    // 3. O FILTRO DE OURO: Se a eleição for por turma, só mostra os candidatos da MESMA turma
-    const finalCandidates = allCandidatesData?.filter(cand => {
-      const eleicaoReferente = activeElections.find(e => e.nome === cand.candidate_role);
-      if (eleicaoReferente?.tipo === 'turma') {
-        return cand.turma_id === student.turma_id;
-      }
-      return true; // Se for Universal ou Geral, deixa passar todos
-    }) || [];
-
-    // 4. Monta o pacote de dados pronto para a Urna
+    // 3. Monta o pacote inteligente para a Urna
     setUrnaPayload({
       id: student.turma_id,
       name: student.turmas?.name,
-      allowedRoles: allowedRoles, 
-      candidates: finalCandidates
+      allowedElections: allowedElections, // Passa os objetos completos das eleições permitidas
+      candidates: allCandidatesData || []
     });
 
     setPhase("setup");
     setLoadingCandidates(false);
   };
-
-  const handleStartVoting = () => {
-    setCurrentSessionId(crypto.randomUUID());
-    setPhase("voting");
-  };
-
+  
   // ============================================================================
   // GRAVAÇÃO MÚLTIPLA NA BLOCKCHAIN
   // ============================================================================
