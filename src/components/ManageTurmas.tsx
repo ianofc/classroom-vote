@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Turma, Student } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Edit2, Users, Loader2, Save, X, UserPlus, UploadCloud, Tag, Printer, Contact2 } from "lucide-react";
+import { Plus, Trash2, Edit2, Users, Loader2, Save, X, UserPlus, UploadCloud, Tag, Printer, Contact2, Zap } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import Papa from 'papaparse';
 
@@ -61,6 +61,49 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       onTurmasChanged();
       toast({ title: "Sucesso", description: "Turma adicionada!" });
     }
+  };
+
+  // ============================================================================
+  // NOVO: GERADOR DE AMBIENTE DE TESTE
+  // ============================================================================
+  const handleCreateTestEnvironment = async () => {
+    if (!escolaId) return;
+    setLoading(true);
+    try {
+      // 1. Cria a Turma de Teste
+      const { data: turmaData, error: turmaError } = await supabase
+        .from('turmas')
+        .insert([{ name: "Turma de Teste 🧪", escola_id: escolaId }])
+        .select()
+        .single();
+
+      if (turmaError) throw turmaError;
+
+      // 2. Cria os Alunos de Teste (1 Eleitor, 2 Candidatos)
+      const mockStudents = [
+        { 
+          turma_id: turmaData.id, name: "Eleitor de Teste", document: "000000", 
+          is_candidate: false 
+        },
+        { 
+          turma_id: turmaData.id, name: "Candidato Alfa", document: "111111", 
+          is_candidate: true, candidate_number: 10, candidate_role: "Candidato Teste", vice_name: "Vice Beta" 
+        },
+        { 
+          turma_id: turmaData.id, name: "Candidato Ômega", document: "222222", 
+          is_candidate: true, candidate_number: 20, candidate_role: "Candidato Teste", vice_name: "Vice Delta" 
+        }
+      ];
+
+      const { error: stdError } = await supabase.from('students').insert(mockStudents);
+      if (stdError) throw stdError;
+
+      toast({ title: "Ambiente de Teste Criado!", description: "A Turma de Teste e os alunos foram gerados com sucesso." });
+      fetchTurmas();
+    } catch(e: any) {
+      toast({ title: "Erro ao gerar teste", description: e.message, variant: "destructive" });
+    }
+    setLoading(false);
   };
 
   const handleDeleteTurma = async (id: string) => {
@@ -185,15 +228,10 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     });
   };
 
-  // ========================================================================
-  // GERADOR DE SANTINHOS (CANDIDATE CARDS)
-  // ========================================================================
   const printCandidateCard = (candidate: Student) => {
     setIsPrintingCard(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
-    
     const cargosList = candidate.candidate_role ? candidate.candidate_role.split(',') : [];
-    // Pega o primeiro cargo para destaque no card
     const primaryRole = cargosList.length > 0 ? escapeHtml(cargosList[0].trim()) : "Candidato";
     
     const cardHtml = `
@@ -259,10 +297,21 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     <div className="flex flex-col md:flex-row gap-6">
       <div className="w-full md:w-1/3 bg-slate-50 p-4 rounded-xl border border-slate-200 h-fit">
         <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-4"><Users className="w-4 h-4"/> Turmas Cadastradas</h3>
+        
         <div className="flex gap-2 mb-4">
           <input type="text" placeholder="Nova Turma" className="w-full p-2 text-sm border rounded outline-none focus:border-blue-500" value={newTurmaName} onChange={e => setNewTurmaName(e.target.value)} />
           <button onClick={handleAddTurma} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700"><Plus className="w-4 h-4" /></button>
         </div>
+
+        {/* BOTÃO GERADOR DE AMBIENTE DE TESTE */}
+        <button 
+          onClick={handleCreateTestEnvironment} 
+          disabled={loading || !escolaId} 
+          className="w-full mb-4 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200 p-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+        >
+          <Zap className="w-4 h-4" /> GERAR AMBIENTE DE TESTE RÁPIDO
+        </button>
+
         <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
           {turmas.map(t => (
             <div key={t.id} className={`flex justify-between items-center p-3 rounded-lg border cursor-pointer transition-colors ${selectedTurma?.id === t.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white hover:bg-slate-100'}`} onClick={() => selectTurma(t)}>
@@ -365,7 +414,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                         </div>
                         
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {/* BOTÃO MÁGICO DO SANTINHO */}
                           {s.is_candidate && (
                             <button onClick={() => printCandidateCard(s)} title="Imprimir Cartão de Campanha" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-2 transition-colors">
                               <Printer className="w-4 h-4"/>
