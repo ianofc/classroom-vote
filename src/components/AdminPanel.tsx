@@ -3,7 +3,7 @@ import { Turma } from "@/data/turmas";
 import { supabase } from "@/lib/supabase";
 import { 
   ArrowLeft, ShieldCheck, FileText, 
-  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, Download, Loader2, Trophy, Flame, TrendingUp, Users, Target, Image as ImageIcon, Contact
+  Filter, Search, Calendar, Eye, EyeOff, Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, PieChart, AlertTriangle, User, CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, Download, Loader2, Trophy, Flame, TrendingUp, Users, Target, Image as ImageIcon, Contact, Database
 } from "lucide-react";
 import ManageTurmas from "./ManageTurmas";
 import ManageAdmins from "./ManageAdmins";
@@ -46,8 +46,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const itemsPerPage = 50;
   const [filters, setFilters] = useState({ search: "", turmaId: turma ? turma.id : "", eleicaoId: "", voteType: "", date: "" });
   const [apuracaoTurmaId, setApuracaoTurmaId] = useState(turma ? turma.id : "");
-
-  // Filtro para a aba de Mídias
   const [midiaSearch, setMidiaSearch] = useState("");
 
   useEffect(() => { document.documentElement.classList.remove('dark'); }, []);
@@ -81,9 +79,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
            if (escolaData.valid_until) {
              const dataValidade = new Date(escolaData.valid_until);
              setValidadeStr(dataValidade.toLocaleDateString('pt-BR'));
-             if (new Date() > dataValidade || escolaData.status === 'suspended') {
-               setIsExpired(true); setReportLoading(false); return; 
-             }
+             if (new Date() > dataValidade || escolaData.status === 'suspended') { setIsExpired(true); setReportLoading(false); return; }
            }
         }
       }
@@ -134,10 +130,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     if (!apuracaoTurmaId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
     const tVotes = allVotes.filter(v => v.turma_id === apuracaoTurmaId);
     return {
-      total: tVotes.length, 
-      validos: tVotes.filter(v => v.vote_type === 'candidate').length,
-      brancos: tVotes.filter(v => v.vote_type === 'branco').length, 
-      nulos: tVotes.filter(v => v.vote_type === 'nulo').length
+      total: tVotes.length, validos: tVotes.filter(v => v.vote_type === 'candidate').length,
+      brancos: tVotes.filter(v => v.vote_type === 'branco').length, nulos: tVotes.filter(v => v.vote_type === 'nulo').length
     };
   }, [apuracaoTurmaId, allVotes]);
 
@@ -166,14 +160,8 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     });
   }, [apuracaoTurmaId, allVotes, allCandidates]);
 
-  // ========================================================================
-  // EXPORTAÇÕES E RELATÓRIOS
-  // ========================================================================
   const exportToCSV = () => {
-    if (filteredReport.length === 0) {
-      toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
-      return;
-    }
+    if (filteredReport.length === 0) { toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" }); return; }
     let csvContent = "Data/Hora,Eleicao,Turma,Eleitor,Cargo,Voto_Computado\n";
     filteredReport.forEach(v => {
       const data = v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-';
@@ -188,87 +176,43 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     });
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Auditoria_Votos_${new Date().getTime()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Auditoria_Votos_${new Date().getTime()}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
     toast({ title: "Sucesso", description: "Download do arquivo Excel concluído!" });
   };
 
   const printDashboardReport = () => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
-    const turmaName = escapeHtml(getTurmaName(apuracaoTurmaId));
-    const nomeDaEscolaSeguro = escapeHtml(escolaNome);
+    const turmaName = escapeHtml(getTurmaName(apuracaoTurmaId)); const nomeDaEscolaSeguro = escapeHtml(escolaNome);
 
     let rolesHtml = '';
     if (apuracaoResults && apuracaoResults.length > 0) {
       rolesHtml = apuracaoResults.map(result => {
         let candidatesHtml = result.candidateResults.map((c: any, idx: number) => `
-          <tr>
-            <td style="text-align: center; font-weight: bold;">${idx + 1}º</td>
-            <td><strong>${escapeHtml(c.name)}</strong> ${c.vice_name ? `<br/><small style="color: #666;">Vice: ${escapeHtml(c.vice_name)}</small>` : ''}</td>
-            <td style="text-align: center; font-weight: bold;">Nº ${c.candidate_number}</td>
-            <td style="text-align: right;"><strong>${c.votes}</strong> (${c.percentage.toFixed(1)}%)</td>
-          </tr>
+          <tr><td style="text-align: center; font-weight: bold;">${idx + 1}º</td><td><strong>${escapeHtml(c.name)}</strong> ${c.vice_name ? `<br/><small style="color: #666;">Vice: ${escapeHtml(c.vice_name)}</small>` : ''}</td><td style="text-align: center; font-weight: bold;">Nº ${c.candidate_number}</td><td style="text-align: right;"><strong>${c.votes}</strong> (${c.percentage.toFixed(1)}%)</td></tr>
         `).join('');
         if (result.candidateResults.length === 0) candidatesHtml = `<tr><td colspan="4" style="text-align: center; color: #666; padding: 20px;">Nenhum candidato registrado para este cargo.</td></tr>`;
         return `
-          <div class="role-section">
-            <h2>Cargo: ${escapeHtml(result.role)}</h2>
-            <table>
-              <thead><tr><th width="60" style="text-align: center;">Posição</th><th>Candidato / Chapa</th><th width="80" style="text-align: center;">Número</th><th width="120" style="text-align: right;">Votos Computados</th></tr></thead>
-              <tbody>${candidatesHtml}</tbody>
-            </table>
-            <div class="role-summary">
-              <span><strong>Brancos:</strong> ${result.brancos.votes} (${result.brancos.percentage.toFixed(1)}%)</span>
-              <span><strong>Nulos:</strong> ${result.nulos.votes} (${result.nulos.percentage.toFixed(1)}%)</span>
-              <span><strong>Total do Cargo:</strong> ${result.totalVotes}</span>
-            </div>
+          <div class="role-section"><h2>Cargo: ${escapeHtml(result.role)}</h2><table><thead><tr><th width="60" style="text-align: center;">Posição</th><th>Candidato / Chapa</th><th width="80" style="text-align: center;">Número</th><th width="120" style="text-align: right;">Votos Computados</th></tr></thead><tbody>${candidatesHtml}</tbody></table>
+            <div class="role-summary"><span><strong>Brancos:</strong> ${result.brancos.votes} (${result.brancos.percentage.toFixed(1)}%)</span><span><strong>Nulos:</strong> ${result.nulos.votes} (${result.nulos.percentage.toFixed(1)}%)</span><span><strong>Total do Cargo:</strong> ${result.totalVotes}</span></div>
           </div>
         `;
       }).join('');
     } else rolesHtml = `<p style="text-align: center; color: #666; margin-top: 40px;">Nenhum dado de votação encontrado para esta turma.</p>`;
 
     const reportHtml = `
-      <html>
-        <head><title>Boletim de Urna - ${turmaName}</title>
+      <html><head><title>Boletim de Urna - ${turmaName}</title>
           <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
-            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; }
-            .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; }
-            .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; }
-            .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; }
-            .overview div:last-child { border-right: none; }
-            .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; }
-            .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; }
-            .role-section { margin-bottom: 40px; page-break-inside: avoid; }
-            .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; }
-            th, td { border: 1px solid #ccc; padding: 12px; text-align: left; }
-            th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; }
-            .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
-            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; }
-            .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
-            @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; } .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #ccc; padding: 12px; text-align: left; } th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }
           </style>
-        </head>
-        <body>
+        </head><body>
           <div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Boletim de Urna - Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #333;">Turma: ${turmaName}</h3></div>
-          <div class="overview">
-            <div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div>
-            <div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div>
-            <div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div>
-            <div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div>
-          </div>
+          <div class="overview"><div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>
           ${rolesHtml}
           <div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div>
           <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
+        </body></html>
     `;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
@@ -280,50 +224,61 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     const nomeDaEscolaSeguro = escapeHtml(escolaNome);
 
     const rows = filteredReport.map(v => `
-      <tr>
-        <td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td>
-        <td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td>
-        <td>${escapeHtml(getTurmaName(v.turma_id))}</td>
-        <td><strong>${escapeHtml(v.voter_name)}</strong></td>
-        <td style="text-align: center; font-weight: bold;">
-          ${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}
-          ${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}
-        </td>
-      </tr>
+      <tr><td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td><td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td><td>${escapeHtml(getTurmaName(v.turma_id))}</td><td><strong>${escapeHtml(v.voter_name)}</strong></td><td style="text-align: center; font-weight: bold;">${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type.toUpperCase()}</td></tr>
     `).join("");
 
     const reportHtml = `
-      <html>
-        <head><title>Auditoria de Votação - ${nomeDaEscolaSeguro}</title>
+      <html><head><title>Auditoria de Votação - ${nomeDaEscolaSeguro}</title>
           <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; }
-            .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-            h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; }
-            .sub { color: #666; font-size: 14px; margin-top: 5px; }
-            .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-            th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
-            th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; }
-            .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; }
-            .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
-            @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; } .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ccc; padding: 10px; text-align: left; } th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }
           </style>
-        </head>
-        <body>
+        </head><body>
           <div class="cabecalho"><h1>${nomeDaEscolaSeguro}</h1><div class="sub">Relatório Oficial de Auditoria Cadastral</div></div>
-          <div class="filters">
-            <strong>Filtros aplicados na pesquisa:</strong><br/>
-            Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}
-          </div>
+          <div class="filters"><strong>Filtros aplicados na pesquisa:</strong><br/>Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? filters.voteType.toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}</div>
           <p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p>
           <table><thead><tr><th>Data/Hora</th><th>Eleição</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead><tbody>${rows}</tbody></table>
           <div class="rodape">Documento gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Sistema Desenvolvido por Ian Santos</div></div>
           <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
+        </body></html>
     `;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
+  };
+
+  const downloadSnapshot = async () => {
+    try {
+      const fetchEverything = async (tableName: string) => {
+        let allData: any[] = []; let from = 0; const step = 1000; let fetchMore = true;
+        while (fetchMore) {
+          const { data, error } = await supabase.from(tableName).select('*').range(from, from + step - 1);
+          if (error) throw error;
+          if (data && data.length > 0) { allData = [...allData, ...data]; if (data.length < step) fetchMore = false; else from += step; } else fetchMore = false;
+        }
+        return allData;
+      };
+
+      toast({ title: "Iniciando Backup...", description: "Reunindo dados da base." });
+      
+      const [vData, tData, sData, eData, lData] = await Promise.all([
+        fetchEverything('votes'), fetchEverything('turmas'), fetchEverything('students'), fetchEverything('eleicoes'), fetchEverything('admin_logs')
+      ]);
+
+      const snapshot = {
+        app: "Classroom Vote Enterprise", version: "1.0", timestamp: new Date().toISOString(), escola: escolaNome,
+        data: { eleicoes: eData, turmas: tData, students: sData, votes: vData, logs: lData }
+      };
+
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = `snapshot_seguranca_${escolaNome.replace(/\s+/g, '_')}_${new Date().getTime()}.json`;
+      link.click();
+      
+      toast({ title: "Snapshot Gerado", description: "Backup completo descarregado para a sua máquina." });
+      logAction("BACKUP", "Foi gerado um Snapshot JSON da Base de Dados inteira.");
+    } catch(e) {
+      toast({ title: "Erro no Snapshot", description: "Falha na comunicação com o servidor.", variant: "destructive" });
+    }
   };
 
   const filteredReport = useMemo(() => {
@@ -341,9 +296,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const totalPages = Math.ceil(filteredReport.length / itemsPerPage);
   const paginatedReport = filteredReport.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // ========================================================================
-  // GERADORES DE PDF E MARKETING (MÍDIAS)
-  // ========================================================================
   const printCandidateCard = (candidate: any) => {
     setIsPrinting(true);
     const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -435,7 +387,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     const printWindow = window.open("", "_blank", "width=400,height=600");
     if (printWindow) { printWindow.document.write(badgeHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
-
+  
   const gerarCobrancaMercadoPago = async () => {
     setLoadingPayment(true);
     try {
@@ -485,28 +437,16 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-slate-50 text-slate-900">
       <div className="w-full max-w-[1200px] flex justify-between items-center mb-6">
-        <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Voltar
-        </button>
+        <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors"><ArrowLeft className="w-4 h-4" /> Voltar</button>
         <div className="flex items-center gap-4">
-          <button onClick={() => window.open('/telao', '_blank')} className="hidden md:flex items-center gap-2 text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors shadow-lg">
-            <Maximize className="w-3 h-3" /> ABRIR TELÃO
-          </button>
-          <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">
-            <ShieldCheck className="w-4 h-4" /> {escolaNome}
-          </div>
+          <button onClick={() => window.open('/telao', '_blank')} className="hidden md:flex items-center gap-2 text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors shadow-lg"><Maximize className="w-3 h-3" /> ABRIR TELÃO</button>
+          <div className="flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold"><ShieldCheck className="w-4 h-4" /> {escolaNome}</div>
         </div>
       </div>
 
       <div className="w-full max-w-[1200px] flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm mb-6 justify-center">
         {(["apuracao", "midias", "reports", "eleicoes", "turmas", "admins", "logs", "perfil"] as Tab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all ${
-              activeTab === tab ? "bg-blue-600 text-white shadow-md" : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
+          <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === tab ? "bg-blue-600 text-white shadow-md" : "text-slate-500 hover:bg-slate-50"}`}>
             {tab === "apuracao" && <BarChart3 className="w-4 h-4" />}
             {tab === "midias" && <ImageIcon className="w-4 h-4" />}
             {tab === "reports" && <FileText className="w-4 h-4" />}
@@ -515,20 +455,16 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             {tab === "admins" && <ShieldCheck className="w-4 h-4" />}
             {tab === "logs" && <ActivitySquare className="w-4 h-4" />}
             {tab === "perfil" && <User className="w-4 h-4" />}
-            <span className="hidden md:inline">
-              {tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab.toUpperCase()}
-            </span>
+            <span className="hidden md:inline">{tab === "reports" ? "AUDITORIA" : tab === "apuracao" ? "DASHBOARD" : tab.toUpperCase()}</span>
           </button>
         ))}
       </div>
 
       <div className="w-full max-w-[1200px]">
-        {/* ================================================= */}
-        {/* ABA DE APURAÇÃO (DASHBOARD & GAMIFICAÇÃO) */}
-        {/* ================================================= */}
+        {/* ABA: APURAÇÃO */}
         {activeTab === "apuracao" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-6 md:p-8 rounded-2xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-8 border border-slate-800 relative overflow-hidden">
+             <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-6 md:p-8 rounded-2xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-8 border border-slate-800 relative overflow-hidden">
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
               <div className="flex-1 w-full z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -561,7 +497,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 </div>
               </div>
             </div>
-
+            
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 mt-8">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><Target className="w-6 h-6 text-blue-600" /></div>
@@ -625,9 +561,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ================================================= */}
         {/* ABA: MÍDIAS E MARKETING (SANTINHOS E CRACHÁS) */}
-        {/* ================================================= */}
         {activeTab === "midias" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
@@ -663,7 +597,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                       ))}
                     </div>
 
-                    {/* BOTÕES DE MÍDIA COM WHATSAPP INTEGRADO */}
                     <div className="mt-auto grid grid-cols-1 md:grid-cols-3 gap-2 border-t border-slate-100 pt-4">
                       <button onClick={() => printCandidateCard(cand)} disabled={isPrinting} className="bg-blue-50 text-blue-700 hover:bg-blue-100 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
                         <FileText className="w-3.5 h-3.5" /> PDF
@@ -690,14 +623,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ================================================= */}
-        {/* ABA: AUDITORIA (REPORTS E CSV COMPLETOS) */}
-        {/* ================================================= */}
+        {/* ABA: AUDITORIA (REPORTS) */}
         {activeTab === "reports" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3"><Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria</h2>
-              
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Buscar Aluno</label><div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Nome" className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} /></div></div>
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Eleição</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value})}><option value="">Todas as Eleições</option>{allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></div>
@@ -705,7 +635,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Tipo de Voto</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}><option value="">Todos</option><option value="candidate">Válidos (Candidatos)</option><option value="branco">Em Branco</option><option value="nulo">Nulos</option></select></div>
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase">Data da Votação</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} /></div></div>
               </div>
-              
               <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
                 <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
                 <div className="flex gap-2 w-full md:w-auto">
@@ -714,7 +643,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 </div>
               </div>
             </div>
-
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span><button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">{showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR VOTOS" : "REVELAR VOTOS"}</button></div>
               <div className="overflow-x-auto min-h-[400px]">
@@ -753,12 +681,18 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         )}
 
-        {/* ================================================= */}
-        {/* ABA: LOGS DE SEGURANÇA MANTIDOS */}
-        {/* ================================================= */}
+        {/* ABA: LOGS DE SEGURANÇA E SNAPSHOT */}
         {activeTab === "logs" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
-            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div><div><h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2><p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p></div></div>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div>
+                <div><h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2><p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p></div>
+              </div>
+              <button onClick={downloadSnapshot} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-lg">
+                <Database className="w-4 h-4" /> Descarregar Snapshot JSON
+              </button>
+            </div>
             <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
               {systemLogs.length === 0 && <p className="text-center text-sm text-slate-400 py-10">Nenhuma ação sensível registada recentemente.</p>}
               {systemLogs.map(log => (
