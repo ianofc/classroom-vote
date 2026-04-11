@@ -70,23 +70,24 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     setLoading(false);
   };
 
-  // EXCLUSÃO EM CASCATA DA TURMA E SEUS VOTOS
   const handleDeleteTurma = async (id: string) => {
-    if (!confirm("Atenção! Excluir esta turma apagará permanentemente todos os alunos E TODOS OS VOTOS vinculados a ela. Tem a certeza absoluta?")) return;
+    if (!window.confirm("Atenção! Excluir esta turma apagará PERMANENTEMENTE todos os alunos E TODOS OS VOTOS vinculados a ela. Tem a certeza absoluta?")) return;
     setLoading(true);
-    await supabase.from('votes').delete().eq('turma_id', id);
-    await supabase.from('students').delete().eq('turma_id', id);
-    const { error } = await supabase.from('turmas').delete().eq('id', id);
-    
-    if (!error) {
-      setTurmas(turmas.filter(t => t.id !== id));
+    try {
+      await supabase.from('votes').delete().eq('turma_id', id);
+      await supabase.from('students').delete().eq('turma_id', id);
+      const { error } = await supabase.from('turmas').delete().eq('id', id);
+      if (error) throw error;
+      
+      setTurmas(prev => prev.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
       onTurmasChanged();
       toast({ title: "Sucesso", description: "Turma e registos removidos." });
-    } else {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } catch(e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchStudents = async (turmaId: string) => {
