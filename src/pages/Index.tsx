@@ -150,8 +150,10 @@ const Index = () => {
     setSearchResults(data || []);
     setSearching(false);
   };
+
+  
 // ============================================================================
-  // A MENTE DO TSE: MÚLTIPLOS CARGOS E CÉDULA INTELIGENTE
+  // A MENTE DO TSE: ELEIÇÃO MESTRA E SEGMENTAÇÃO AUTOMÁTICA
   // ============================================================================
   const selectVoter = async (student: any) => {
     setLoadingCandidates(true);
@@ -165,46 +167,88 @@ const Index = () => {
       return;
     }
 
-    // Fatiador de Cargos: Transforma "Líder, Ouvidor" numa lista ['líder', 'ouvidor']
+    // Pega as tags do aluno (Ex: ['líder geral', 'jovem ouvidor lgbt'])
     const rolesDoAluno = student.candidate_role 
       ? student.candidate_role.split(',').map((r: string) => r.trim().toLowerCase()) 
       : [];
 
-    // 1. Descobre a quais eleições esse aluno tem direito
-    let allowedElections = activeElections.filter(eleicao => {
-      if (eleicao.tipo === 'universal') return true; // Todos votam
-      if (eleicao.tipo === 'turma') return true;     // Todos da turma votam na sua urna local
-      if (eleicao.tipo === 'geral') {
-        // Geral Restrita: O aluno tem que ter essa TAG específica
-        return rolesDoAluno.includes(eleicao.nome.toLowerCase());
+    let allowedRoles: string[] = [];
+
+    // 1. Descobre QUAIS SEGMENTOS (Cargos) esse aluno tem o direito de votar nas eleições ativas
+    activeElections.forEach(eleicao => {
+      // Pega os segmentos da eleição separados por vírgula (Ex: ['jovem ouvidor geral', 'jovem ouvidor do campo'])
+      // Se a eleição não tiver a coluna cargos preenchida, usa o nome da própria eleição como fallback
+      const cargosDaEleicao = eleicao.cargos 
+        ? eleicao.cargos.split(',').map((c: string) => c.trim()) 
+        : [eleicao.nome];
+
+      if (eleicao.tipo === 'universal' || eleicao.tipo === 'turma') {
+        // Universal e Turma: O aluno vota em TODOS os segmentos definidos dentro dessa eleição
+        cargosDaEleicao.forEach((cargo: string) => {
+          if (!allowedRoles.includes(cargo)) allowedRoles.push(cargo);
+        });
+      } 
+      else if (eleicao.tipo === 'geral') {
+        // Geral Restrita (Role-Based): O aluno SÓ vota nos segmentos que ele também possua no crachá dele
+        cargosDaEleicao.forEach((cargo: string) => {
+          if (rolesDoAluno.includes(cargo.toLowerCase())) {
+             if (!allowedRoles.includes(cargo)) allowedRoles.push(cargo);
+          }
+        });
       }
-      return false;
     });
 
-    if (allowedElections.length === 0) {
+    if (allowedRoles.length === 0) {
       toast({ title: "Acesso Negado", description: "Este aluno não possui perfil para votar nas eleições atualmente abertas.", variant: "destructive" });
       setLoadingCandidates(false);
       setVoterData(null);
       return;
     }
 
-    // 2. Busca TODOS os candidatos ativos da escola (A Urna fará o filtro cruzado)
+    // 2. Busca TODOS os candidatos do banco que concorrem a esses cargos autorizados
     const { data: allCandidatesData } = await supabase
       .from('students')
       .select('*')
       .eq('is_candidate', true);
 
-    // 3. Monta o pacote inteligente para a Urna
+    // Filtra para pegar apenas os candidatos que têm ao menos uma das tags autorizadas
+    const filteredByRole = allCandidatesData?.filter(cand => {
+       if (!cand.candidate_role) return false;
+       const candRoles = cand.candidate_role.split(',').map((r: string) => r.trim().toLowerCase());
+       return allowedRoles.some(allowed => candRoles.includes(allowed.toLowerCase()));
+    }) || [];
+
+    // 3. O FILTRO DA SALA DE AULA (Garante que eleitor da Turma A só veja candidato da Turma A nas eleições "Por Turma")
+    const finalCandidates = filteredByRole.filter(cand => {
+      // Pega as tags do candidato
+      const candRoles = cand.candidate_role.split(',').map((r: string) => r.trim().toLowerCase());
+      
+      // Verifica se alguma das tags desse candidato pertence a uma eleição do tipo 'turma'
+      const isFromTurmaElection = activeElections.some(eleicao => {
+         if (eleicao.tipo !== 'turma') return false;
+         const cargosEleicao = eleicao.cargos ? eleicao.cargos.split(',').map((c: string) => c.trim().toLowerCase()) : [eleicao.nome.toLowerCase()];
+         // Se a eleição é de turma e o candidato tem um cargo dela
+         return cargosEleicao.some((c: string) => candRoles.includes(c));
+      });
+
+      if (isFromTurmaElection) {
+        return cand.turma_id === student.turma_id; // Trava na mesma turma
+      }
+      return true; // Se for Universal ou Geral, libera pra escola toda ver!
+    });
+
+    // 4. Monta o pacote de dados para a Urna iterar
     setUrnaPayload({
       id: student.turma_id,
       name: student.turmas?.name,
-      allowedElections: allowedElections, // Passa os objetos completos das eleições permitidas
-      candidates: allCandidatesData || []
+      allowedRoles: allowedRoles, // Passamos as Strings dos Segmentos (E a urna vai gerar uma tela pra cada)
+      candidates: finalCandidates
     });
 
     setPhase("setup");
     setLoadingCandidates(false);
   };
+  
   
   // ============================================================================
   // GRAVAÇÃO MÚLTIPLA NA BLOCKCHAIN
