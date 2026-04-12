@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, Edit2, Loader2, ShieldCheck, Mail, Save, X, Building2 } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, ShieldCheck, Mail, Save, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Admin {
@@ -33,7 +33,6 @@ const ManageAdmins = () => {
     const { data: userData } = await supabase.auth.getUser();
     
     if (userData?.user) {
-      // Descobre a escola do Admin logado
       const { data: currentAdmin } = await supabase
         .from('admins')
         .select('escola_id')
@@ -42,8 +41,6 @@ const ManageAdmins = () => {
 
       if (currentAdmin?.escola_id) {
         setEscolaId(currentAdmin.escola_id);
-        
-        // READ: Busca todos os admins dessa mesma escola
         const { data: adminsList, error } = await supabase
           .from('admins')
           .select('*')
@@ -73,22 +70,20 @@ const ManageAdmins = () => {
     };
 
     if (editingId) {
-      // UPDATE (Editar)
       const { error } = await supabase.from('admins').update(payload).eq('id', editingId);
       if (error) {
-        toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" });
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
       } else {
         toast({ title: "Atualizado!", description: "Dados do administrador atualizados." });
         resetForm();
         fetchAdmins();
       }
     } else {
-      // CREATE (Novo)
       const { error } = await supabase.from('admins').insert([payload]);
       if (error) {
-        toast({ title: "Erro ao criar", description: error.message, variant: "destructive" });
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
       } else {
-        toast({ title: "Cadastrado!", description: "Novo administrador adicionado à escola." });
+        toast({ title: "Cadastrado!", description: "Novo administrador adicionado." });
         resetForm();
         fetchAdmins();
       }
@@ -113,7 +108,6 @@ const ManageAdmins = () => {
 
   const handleDelete = async (id: string, nome: string) => {
     if (!window.confirm(`Tem a certeza que deseja remover o acesso de ${nome}?`)) return;
-    
     const { error } = await supabase.from('admins').delete().eq('id', id);
     if (error) {
       toast({ title: "Erro ao excluir", description: error.message, variant: "destructive" });
@@ -132,7 +126,6 @@ const ManageAdmins = () => {
         <p className="text-sm text-slate-500 font-medium mt-1">Registe os diretores, coordenadores e mesários que terão acesso a este painel.</p>
       </div>
 
-      {/* FORMULÁRIO CRUD */}
       <div className={`bg-slate-50 p-6 rounded-xl border mb-8 transition-all ${editingId ? 'border-blue-400 ring-4 ring-blue-50' : 'border-slate-200'}`}>
         <h3 className={`text-xs font-bold uppercase tracking-widest mb-4 ${editingId ? 'text-blue-600' : 'text-slate-400'}`}>
           {editingId ? "A Editar Registo" : "Novo Administrador"}
@@ -171,12 +164,11 @@ const ManageAdmins = () => {
         </div>
       </div>
 
-      {/* LISTAGEM (READ) */}
       <div className="space-y-3">
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
         ) : admins.length === 0 ? (
-          <p className="text-center text-sm text-slate-400 py-8">Nenhum administrador encontrado nesta instituição.</p>
+          <p className="text-center text-sm text-slate-400 py-8">Nenhum administrador encontrado.</p>
         ) : (
           admins.map(admin => (
             <div key={admin.id} className="p-5 rounded-xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4 bg-white hover:shadow-sm transition-shadow">
