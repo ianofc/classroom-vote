@@ -64,14 +64,14 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       ];
       const { error: stdError } = await supabase.from('students').insert(mockStudents);
       if (stdError) throw stdError;
-      toast({ title: "Ambiente de Teste Criado!", description: "Turma de Teste e alunos gerados." });
+      toast({ title: "Ambiente de Teste Criado!", description: "A Turma de Teste e os alunos foram gerados com sucesso." });
       fetchTurmas();
     } catch(e: any) { toast({ title: "Erro ao gerar teste", description: e.message, variant: "destructive" }); }
     setLoading(false);
   };
 
   const handleDeleteTurma = async (id: string) => {
-    if (!confirm("Atenção! Excluir esta turma apagará TODOS os alunos e votos nela. Continuar?")) return;
+    if (!confirm("Atenção! Excluir esta turma apagará permanentemente todos os alunos E TODOS OS VOTOS vinculados a ela. Tem a certeza absoluta?")) return;
     setLoading(true);
     await supabase.from('votes').delete().eq('turma_id', id);
     await supabase.from('students').delete().eq('turma_id', id);
@@ -79,7 +79,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     if (!error) {
       setTurmas(turmas.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
-      onTurmasChanged(); toast({ title: "Sucesso", description: "Turma removida." });
+      onTurmasChanged(); toast({ title: "Sucesso", description: "Turma e registos removidos." });
     } else { toast({ title: "Erro", description: error.message, variant: "destructive" }); }
     setLoading(false);
   };
@@ -110,7 +110,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       if (!error) { toast({ title: "Atualizado", description: "Dados do aluno atualizados." }); fetchStudents(selectedTurma.id); resetForm(); }
     } else {
       const { error } = await supabase.from('students').insert([payload]);
-      if (!error) { toast({ title: "Adicionado", description: "Aluno adicionado." }); fetchStudents(selectedTurma.id); resetForm(); }
+      if (!error) { toast({ title: "Adicionado", description: "Aluno adicionado com sucesso." }); fetchStudents(selectedTurma.id); resetForm(); }
     }
   };
 
@@ -120,7 +120,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!confirm("Remover aluno? Se for candidato com votos, os votos manter-se-ão.")) return;
+    if (!confirm("Remover aluno?")) return;
     const { error } = await supabase.from('students').delete().eq('id', id);
     if (!error) { setStudents(students.filter(s => s.id !== id)); toast({ title: "Removido", description: "Aluno removido." }); }
   };
@@ -135,38 +135,59 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
         const formattedStudents = rows.map(row => ({ turma_id: selectedTurma.id, name: row.Nome || row.name || row.NOME, document: row.Matricula || row.document || row.MATRICULA || null, is_candidate: false })).filter(s => s.name);
         if (formattedStudents.length > 0) {
           const { error } = await supabase.from('students').insert(formattedStudents);
-          if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-          else { toast({ title: "Planilha Importada!" }); fetchStudents(selectedTurma.id); }
+          if (error) toast({ title: "Erro no Upload", description: error.message, variant: "destructive" });
+          else { toast({ title: "Planilha Importada!", description: `${formattedStudents.length} alunos cadastrados.` }); fetchStudents(selectedTurma.id); }
         }
         setLoading(false);
       }
     });
   };
 
-  // IMPRESSÃO ECOLÓGICA E PREMIUM 
+  // ========================================================================
+  // MÍDIAS PREMIUM COM CÁLCULO ECOLÓGICO E FÍSICO EXATO
+  // ========================================================================
   const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
 
-  const generateCardHTML = (candidate: any, isBadge: boolean) => {
+  // GERADOR DE SANTINHO (7 x 10 cm)
+  const generateSantinhoHTML = (candidate: any) => {
     const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
     return `
-      <div class="card">
-        ${isBadge ? '<div class="hole-punch"></div>' : ''}
+      <div class="santinho">
         <div class="header">
-          ${escolaLogo ? `<img src="${escolaLogo}" style="height:8mm; margin-bottom:1mm; object-fit:contain;" />` : ''}
+          <div class="logo-placeholder">${escolaLogo ? `<img src="${escolaLogo}" />` : `<span style="color:#fff; font-size: 16px;">🏛️</span>`}</div>
+          <div class="school">${escapeHtml(escolaNome)}</div>
+          <h1 class="role">${primaryRole}</h1>
+        </div>
+        <div class="body">
+          <div class="number-box"><span class="number-label">Vote</span><p class="number">${candidate.candidate_number}</p></div>
+          <h2 class="name">${escapeHtml(candidate.name)}</h2>
+          ${candidate.vice_name ? `<p class="vice">Vice: ${escapeHtml(candidate.vice_name)}</p>` : ''}
+          <div class="turma">Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</div>
+        </div>
+        <div class="footer">Eleições 2026</div>
+      </div>
+    `;
+  };
+
+  // GERADOR DE CRACHÁ (10 x 14 cm)
+  const generateBadgeHTML = (candidate: any) => {
+    const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
+    return `
+      <div class="badge">
+        <div class="hole-punch"></div>
+        <div class="header">
+          ${escolaLogo ? `<img src="${escolaLogo}" style="height:12mm; margin-bottom:2mm; object-fit:contain;" />` : ''}
           <span class="school-name">${escapeHtml(escolaNome)}</span>
         </div>
-        <div class="photo-area">3x4 FOTO</div>
+        <div class="photo-area">FOTO 3x4</div>
         <div class="info-area">
           <h1 class="name">${escapeHtml(candidate.name)}</h1>
           <h2 class="role">${primaryRole}</h2>
           <div class="details">
-            <span>Turma: ${escapeHtml(selectedTurma?.name || '')}</span>
-            <span>${candidate.vice_name ? 'Vice: ' + escapeHtml(candidate.vice_name) : 'Ano Letivo: ' + new Date().getFullYear()}</span>
+            <span>Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</span>
+            <span>Ano Letivo: ${new Date().getFullYear()}</span>
           </div>
-          <div class="number-badge">
-            ${!isBadge ? '<span style="font-size:6px; display:block; margin-bottom:1px; color:#fbbf24;">VOTE</span>' : ''}
-            ${candidate.candidate_number}
-          </div>
+          <div class="number-badge">${candidate.candidate_number}</div>
         </div>
       </div>
     `;
@@ -174,33 +195,78 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
 
   const printDocs = (candidates: any[], isBadge: boolean) => {
     setIsPrintingCard(true);
-    let cards = '';
-    if (isBadge) {
-        cards = candidates.map(c => generateCardHTML(c, true)).join('');
-    } else {
-        cards = candidates.map(c => {
-            let pageHtml = ''; for(let i=0; i<9; i++) { pageHtml += generateCardHTML(c, false); }
-            return pageHtml;
-        }).join('');
+    
+    // LÓGICA ECOLÓGICA INTELIGENTE:
+    // Se selecionou apenas 1 candidato, preenche a folha com cópias dele.
+    // Se selecionou Múltiplos, imprime 1 de cada na grelha.
+    const qtyPerPage = isBadge ? 4 : 8; // 4 Crachás por A4, ou 8 Santinhos por A4
+    const itemsToPrint = candidates.length === 1 ? Array(qtyPerPage).fill(candidates[0]) : candidates;
+    
+    const pages = [];
+    for (let i = 0; i < itemsToPrint.length; i += qtyPerPage) {
+      const chunk = itemsToPrint.slice(i, i + qtyPerPage);
+      const cardsHtml = chunk.map(c => isBadge ? generateBadgeHTML(c) : generateSantinhoHTML(c)).join('');
+      pages.push(`<div class="page">${cardsHtml}</div>`);
     }
 
-    const html = `<html><head><title>Impressão Ecológica</title><style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-      @page { size: A4 portrait; margin: 10mm; }
-      body { margin:0; padding:0; font-family:'Inter',sans-serif; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .grid-container { display: flex; flex-wrap: wrap; gap: 5mm; justify-content: flex-start; }
-      .card { width: 54mm; height: 86mm; background: white; border-radius: 8px; border: 1px solid #cbd5e1; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; page-break-inside: avoid; }
-      .hole-punch { width: 14mm; height: 3mm; border-radius: 5px; border: 1px solid #cbd5e1; position: absolute; top: 4mm; background: #f8fafc; z-index: 10; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
-      .header { width: 100%; height: 28mm; background: linear-gradient(135deg, #1e3a8a, #0f172a); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 3mm; }
-      .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5mm; background: #fbbf24; }
-      .school-name { color: #f8fafc; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; text-align: center; margin-top: 5mm; padding: 0 5mm; }
-      .photo-area { width: 28mm; height: 35mm; border: 2px solid #cbd5e1; background: #f1f5f9; margin-top: 4mm; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 8px; font-weight: bold; text-transform: uppercase; }
-      .info-area { text-align: center; margin-top: 2mm; padding: 0 4mm; width: 100%; box-sizing: border-box; flex: 1; display:flex; flex-direction:column; }
-      .name { font-size: 13px; font-weight: 900; color: #0f172a; text-transform: uppercase; line-height: 1; margin: 0; letter-spacing: -0.5px;}
-      .role { font-size: 9px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 1mm 0 2mm 0; }
-      .details { font-size: 7px; color: #64748b; font-weight: bold; margin-bottom: 2mm; display: flex; flex-direction: column; gap: 1px;}
-      .number-badge { margin-top: auto; background: #0f172a; color: #fbbf24; display: inline-block; padding: 1.5mm 5mm; border-radius: 6px; font-size: 18px; font-weight: 900; margin-bottom: 4mm; text-align:center; line-height: 1;}
-    </style></head><body><div class="grid-container">${cards}</div><script>window.onload=()=>window.print()</script></body></html>`;
+    const html = `
+      <html>
+        <head>
+          <title>Estúdio de Campanhas - ${isBadge ? 'Crachás' : 'Santinhos'}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            
+            /* DEFINIÇÕES DA FOLHA A4 */
+            ${isBadge ? '@page { size: A4 portrait; margin: 5mm; }' : '@page { size: A4 landscape; margin: 6mm; }'}
+            
+            body { margin:0; padding:0; font-family:'Inter', sans-serif; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            
+            /* GRELHA MATEMATICAMENTE PERFEITA */
+            .page { 
+              display: grid; 
+              ${isBadge ? 'grid-template-columns: repeat(2, 100mm); grid-template-rows: repeat(2, 140mm); gap: 4mm;' : 'grid-template-columns: repeat(4, 70mm); grid-template-rows: repeat(2, 100mm); gap: 2mm;'}
+              justify-content: center; align-content: center; width: 100%; height: 100vh; page-break-after: always; 
+            }
+
+            /* --- DESIGN SANTINHO (70x100 mm) --- */
+            .santinho { width: 70mm; height: 100mm; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border-radius: 8px; border: 1px dashed #94a3b8; position: relative; display: flex; flex-direction: column; overflow: hidden;}
+            .santinho::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+            .santinho .header { padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+            .santinho .logo-placeholder { width: 25px; height: 25px; margin: 0 auto 2px auto; display: flex; align-items: center; justify-content: center; }
+            .santinho .logo-placeholder img { max-width: 100%; max-height: 100%; object-fit: contain; }
+            .santinho .school { font-size: 6px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: #94a3b8; margin-bottom: 1px; }
+            .santinho .role { font-size: 11px; font-weight: 900; text-transform: uppercase; color: #f8fafc; margin: 0; line-height: 1; }
+            .santinho .body { padding: 8px; text-align: center; flex: 1; display:flex; flex-direction:column; justify-content:center; }
+            .santinho .number-box { background: rgba(0,0,0,0.3); border: 1.5px solid #fbbf24; border-radius: 8px; display: inline-block; padding: 4px 15px; margin: 0 auto 6px auto; }
+            .santinho .number-label { font-size: 6px; color: #fbbf24; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 1px; }
+            .santinho .number { font-size: 28px; font-weight: 900; color: #ffffff; margin: 0; line-height: 1; }
+            .santinho .name { font-size: 14px; font-weight: 900; color: #f8fafc; text-transform: uppercase; margin: 0; line-height: 1.1; letter-spacing: -0.5px; }
+            .santinho .vice { font-size: 8px; color: #94a3b8; font-weight: bold; text-transform: uppercase; margin-top: 3px; margin-bottom: 0;}
+            .santinho .turma { font-size: 7px; font-weight: bold; color: #fbbf24; background: rgba(251,191,36,0.1); display: inline-block; padding: 2px 6px; border-radius: 10px; margin-top: 6px; }
+            .santinho .footer { background: #020617; color: #475569; text-align: center; padding: 6px; font-size: 5px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+
+            /* --- DESIGN CRACHÁ OFICIAL (100x140 mm) --- */
+            .badge { width: 100mm; height: 140mm; background: white; border-radius: 8px; border: 1px dashed #94a3b8; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+            .badge .hole-punch { width: 15mm; height: 4mm; border-radius: 6px; border: 1px solid #cbd5e1; position: absolute; top: 5mm; background: #f8fafc; z-index: 10; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+            .badge .header { width: 100%; height: 35mm; background: linear-gradient(135deg, #1e3a8a, #0f172a); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 4mm; }
+            .badge .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2mm; background: #fbbf24; }
+            .badge .school-name { color: #f8fafc; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; text-align: center; margin-top: 2mm; padding: 0 5mm; }
+            .badge .photo-area { width: 35mm; height: 45mm; border: 2px dashed #cbd5e1; background: #f8fafc; margin-top: 8mm; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+            .badge .info-area { text-align: center; margin-top: 4mm; padding: 0 6mm; width: 100%; box-sizing: border-box; flex: 1; display:flex; flex-direction:column; }
+            .badge .name { font-size: 20px; font-weight: 900; color: #0f172a; text-transform: uppercase; line-height: 1.1; margin: 0; letter-spacing: -0.5px;}
+            .badge .role { font-size: 14px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 2mm 0 4mm 0; }
+            .badge .details { font-size: 10px; color: #64748b; font-weight: bold; margin-bottom: 2mm; display: flex; flex-direction: column; gap: 2px;}
+            .badge .number-badge { margin-top: auto; background: #0f172a; color: #fbbf24; display: inline-block; padding: 2mm 8mm; border-radius: 8px; font-size: 28px; font-weight: 900; margin-bottom: 8mm; text-align:center; line-height: 1;}
+            
+            @media print { body { background: white; } .santinho, .badge { border-color: #cbd5e1; } }
+          </style>
+        </head>
+        <body>
+          ${pages.join('')}
+          <script>window.onload=()=>window.print()</script>
+        </body>
+      </html>
+    `;
     
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(html); printWindow.document.close(); setTimeout(() => setIsPrintingCard(false), 1000); }
@@ -240,7 +306,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                     <div className="grid grid-cols-2 gap-4"><input type="number" placeholder="Nº de Urna (Ex: 10)" className="p-3 border rounded bg-slate-50 text-sm font-bold" value={newStudent.candidate_number} onChange={e => setNewStudent({...newStudent, candidate_number: e.target.value})} /><input type="text" placeholder="Nome do Vice (Opcional)" className="p-3 border rounded bg-slate-50 text-sm" value={newStudent.vice_name} onChange={e => setNewStudent({...newStudent, vice_name: e.target.value})} /></div>
                     <div className="pt-2 border-t border-slate-100">
                       <p className="text-xs font-bold text-slate-500 uppercase mb-2">Perfis Vinculados (Tags)</p>
-                      <div className="flex gap-2 mb-3"><input type="text" placeholder="Ex: Jovem Ouvidor" className="flex-1 p-2 border rounded text-sm outline-none focus:border-blue-500" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter') handleAddTag() }} /><button onClick={handleAddTag} className="bg-slate-800 text-white px-3 py-2 rounded text-xs font-bold hover:bg-slate-700">Adicionar</button></div>
+                      <div className="flex gap-2 mb-3"><input type="text" placeholder="Ex: Jovem Ouvidor LGBT" className="flex-1 p-2 border rounded text-sm outline-none focus:border-blue-500" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter') handleAddTag() }} /><button onClick={handleAddTag} className="bg-slate-800 text-white px-3 py-2 rounded text-xs font-bold hover:bg-slate-700">Adicionar</button></div>
                       <div className="flex flex-wrap gap-2">
                         {studentTags.length === 0 && <span className="text-xs text-slate-400 italic">Nenhum cargo adicionado.</span>}
                         {studentTags.map((tag, i) => (<div key={i} className="flex items-center gap-1 bg-indigo-100 text-indigo-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-200"><Tag className="w-3 h-3"/> {tag} <button onClick={() => removeTag(tag)} className="ml-1 text-indigo-400 hover:text-red-500"><X className="w-3 h-3"/></button></div>))}
@@ -272,8 +338,8 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                           )}
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {s.is_candidate && <button onClick={() => printDocs([s], false)} disabled={isPrintingCard} title="Imprimir Santinho" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-1 transition-colors"><FileText className="w-4 h-4"/></button>}
-                          {s.is_candidate && <button onClick={() => printDocs([s], true)} disabled={isPrintingCard} title="Imprimir Crachá" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-2 transition-colors"><Contact className="w-4 h-4"/></button>}
+                          {s.is_candidate && <button onClick={() => printDocs([s], false)} disabled={isPrintingCard} title="Imprimir Santinhos (A4)" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded transition-colors"><FileText className="w-4 h-4"/></button>}
+                          {s.is_candidate && <button onClick={() => printDocs([s], true)} disabled={isPrintingCard} title="Imprimir Crachás (A4)" className="p-2 text-indigo-600 hover:bg-indigo-100 rounded mr-2 transition-colors"><Contact className="w-4 h-4"/></button>}
                           <button onClick={() => startEditStudent(s)} className="p-2 text-blue-500 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4"/></button>
                           <button onClick={() => handleDeleteStudent(s.id!)} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
                         </div>
