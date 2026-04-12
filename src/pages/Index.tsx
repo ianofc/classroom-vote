@@ -103,6 +103,9 @@ const Index = () => {
     setSearching(false);
   };
 
+  // ============================================================================
+  // CORREÇÃO CRÍTICA: GERAÇÃO DA URNA (ALLOWED ELECTIONS)
+  // ============================================================================
   const selectVoter = async (student: any) => {
     setLoadingCandidates(true); setVoterData(student); setSearchQuery(""); setSearchResults([]);
     if (activeElections.length === 0) {
@@ -111,53 +114,73 @@ const Index = () => {
     }
 
     const rolesDoAluno = student.candidate_role ? student.candidate_role.split(',').map((r: string) => r.trim().toLowerCase()) : [];
+    
     let allowedRoles: string[] = [];
+    let allowedElectionsDocs: any[] = []; // O vetor VITAL que estava a faltar na Urna!
 
     activeElections.forEach(eleicao => {
       const cargosDaEleicao = eleicao.cargos ? eleicao.cargos.split(',').map((c: string) => c.trim()) : [eleicao.nome];
+      
       if (eleicao.tipo === 'universal' || eleicao.tipo === 'turma') {
-        cargosDaEleicao.forEach((cargo: string) => { if (!allowedRoles.includes(cargo)) allowedRoles.push(cargo); });
+        cargosDaEleicao.forEach((cargo: string) => { 
+          if (!allowedRoles.includes(cargo)) {
+             allowedRoles.push(cargo);
+             allowedElectionsDocs.push({ nome: cargo, tipo: eleicao.tipo, eleicao_id: eleicao.id });
+          }
+        });
       } else if (eleicao.tipo === 'geral') {
         cargosDaEleicao.forEach((cargo: string) => {
-          if (rolesDoAluno.includes(cargo.toLowerCase())) { if (!allowedRoles.includes(cargo)) allowedRoles.push(cargo); }
+          if (rolesDoAluno.includes(cargo.toLowerCase())) { 
+             if (!allowedRoles.includes(cargo)) {
+                allowedRoles.push(cargo);
+                allowedElectionsDocs.push({ nome: cargo, tipo: eleicao.tipo, eleicao_id: eleicao.id });
+             }
+          }
         });
       }
     });
 
-    if (allowedRoles.length === 0) {
+    if (allowedElectionsDocs.length === 0) {
       toast({ title: "Acesso Negado", description: "Este aluno não possui perfil para votar nas eleições atualmente abertas.", variant: "destructive" });
       setLoadingCandidates(false); setVoterData(null); return;
     }
 
     const { data: allCandidatesData } = await supabase.from('students').select('*').eq('is_candidate', true);
-    const filteredByRole = allCandidatesData?.filter(cand => {
+    
+    // Filtrar candidatos exatos para a urna
+    const finalCandidates = (allCandidatesData || []).filter(cand => {
        if (!cand.candidate_role) return false;
        const candRoles = cand.candidate_role.split(',').map((r: string) => r.trim().toLowerCase());
-       return allowedRoles.some(allowed => candRoles.includes(allowed.toLowerCase()));
-    }) || [];
+       
+       const isCompeting = allowedRoles.some(allowed => candRoles.includes(allowed.toLowerCase()));
+       if (!isCompeting) return false;
 
-    const finalCandidates = filteredByRole.filter(cand => {
-      const candRoles = cand.candidate_role.split(',').map((r: string) => r.trim().toLowerCase());
-      const isFromTurmaElection = activeElections.some(eleicao => {
-         if (eleicao.tipo !== 'turma') return false;
-         const cargosEleicao = eleicao.cargos ? eleicao.cargos.split(',').map((c: string) => c.trim().toLowerCase()) : [eleicao.nome.toLowerCase()];
-         return cargosEleicao.some((c: string) => candRoles.includes(c));
-      });
-      if (isFromTurmaElection) return cand.turma_id === student.turma_id; 
-      return true;
+       const isFromTurmaElection = allowedElectionsDocs.some(eleicao => {
+          if (eleicao.tipo !== 'turma') return false;
+          return candRoles.includes(eleicao.nome.toLowerCase());
+       });
+       if (isFromTurmaElection) return cand.turma_id === student.turma_id; 
+       return true;
     });
 
-    setUrnaPayload({ id: student.turma_id, name: student.turmas?.name, allowedRoles: allowedRoles, candidates: finalCandidates });
+    // Injeta a payload blindada
+    setUrnaPayload({ 
+      id: student.turma_id, 
+      name: student.turmas?.name, 
+      allowedRoles: allowedRoles, 
+      allowedElections: allowedElectionsDocs, // Agora a Urna vai receber isto!
+      candidates: finalCandidates 
+    });
     setPhase("setup"); setLoadingCandidates(false);
   };
 
   const handleStartVoting = () => { setCurrentSessionId(crypto.randomUUID()); setPhase("voting"); };
 
   // ============================================================================
-  // GRAVAÇÃO MÚLTIPLA + OFFLINE + LOCK ANTI-SPAM + AUTO-RETURN
+  // GRAVAÇÃO MÚLTIPLA + OFFLINE + LOCK ANTI-SPAM
   // ============================================================================
   const handleVote = async (votesArray: any[], currentVoterData: any) => {
-    if (isSubmittingVote) return; // BLOQUEIO DE REDE
+    if (isSubmittingVote) return;
     setIsSubmittingVote(true);
 
     try {
@@ -165,11 +188,8 @@ const Index = () => {
       let hashAtual = "GENESIS_BLOCK_0000000000000000000000000000000000000000000000000000";
 
       for (const vote of votesArray) {
-        const eleicaoReferente = activeElections.find(e => {
-           const c = e.cargos ? e.cargos.toLowerCase() : e.nome.toLowerCase();
-           return c.includes(vote.role.toLowerCase());
-        });
-        const eleicaoIdParaGravar = eleicaoReferente?.id;
+        // A urna agora envia o ID da eleição de forma nativa e blindada
+        const eleicaoIdParaGravar = vote.eleicao_id;
         if (!eleicaoIdParaGravar) continue;
 
         let lastVoteData = null;
