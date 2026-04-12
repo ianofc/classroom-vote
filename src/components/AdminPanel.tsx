@@ -5,8 +5,8 @@ import {
   ArrowLeft, ShieldCheck, FileText, Filter, Search, Calendar, Eye, EyeOff, 
   Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, User, 
   CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, 
-  Download, Loader2, Trophy, Flame, TrendingUp, Users, Target, 
-  Image as ImageIcon, Contact, Database, UserCheck, Menu, X 
+  Download, Loader2, Trophy, Flame, Users, Target, 
+  Image as ImageIcon, Contact, Database, UserCheck, LogOut, Menu, X
 } from "lucide-react";
 
 import ManageTurmas from "./ManageTurmas";
@@ -24,17 +24,39 @@ interface AdminLog { id: string; admin_email: string; acao: string; detalhes: st
 type Tab = "apuracao" | "reports" | "midias" | "eleicoes" | "turmas" | "candidatos" | "admins" | "perfil" | "logs";
 interface AdminPanelProps { turma: Turma | null; onBack: () => void; onTurmasChanged: () => void; }
 
-// ESTRUTURA DO MENU ENTERPRISE
-const menuItems: { id: Tab, label: string, icon: React.ReactNode, group: string }[] = [
-  { id: "apuracao", label: "Dashboard", icon: <BarChart3 className="w-4 h-4" />, group: "Resultados" },
-  { id: "reports", label: "Auditoria", icon: <FileText className="w-4 h-4" />, group: "Resultados" },
-  { id: "midias", label: "Estúdio de Mídias", icon: <ImageIcon className="w-4 h-4" />, group: "Campanha" },
-  { id: "eleicoes", label: "Eleições", icon: <CheckSquare className="w-4 h-4" />, group: "Gestão Base" },
-  { id: "turmas", label: "Turmas & Alunos", icon: <GraduationCap className="w-4 h-4" />, group: "Gestão Base" },
-  { id: "candidatos", label: "Candidatos", icon: <UserCheck className="w-4 h-4" />, group: "Gestão Base" },
-  { id: "admins", label: "Administradores", icon: <ShieldCheck className="w-4 h-4" />, group: "Sistema" },
-  { id: "logs", label: "Logs de Segurança", icon: <ActivitySquare className="w-4 h-4" />, group: "Sistema" },
-  { id: "perfil", label: "Meu Perfil", icon: <User className="w-4 h-4" />, group: "Conta" },
+// ============================================================================
+// COMPONENTE DE TOOLTIP CUSTOMIZADO (Para o Dock Flutuante)
+// ============================================================================
+const DockItem = ({ icon: Icon, label, isActive, onClick }: { icon: any, label: string, isActive: boolean, onClick: () => void }) => (
+  <div className="relative group flex items-center justify-center">
+    <button
+      onClick={onClick}
+      className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all duration-300 ${
+        isActive 
+          ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 scale-110" 
+          : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+      }`}
+    >
+      <Icon className={`w-5 h-5 ${isActive ? 'animate-in zoom-in duration-300' : ''}`} />
+    </button>
+    <div className="absolute left-16 px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl z-50 hidden md:block">
+      {label}
+      <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-y-4 border-y-transparent border-r-4 border-r-slate-900" />
+    </div>
+  </div>
+);
+
+// ESTRUTURA DO MENU
+const menuItems: { id: Tab, label: string, icon: React.ElementType, group: string }[] = [
+  { id: "apuracao", label: "Dashboard ao Vivo", icon: BarChart3, group: "Resultados" },
+  { id: "reports", label: "Auditoria Oficial", icon: FileText, group: "Resultados" },
+  { id: "midias", label: "Estúdio de Mídias", icon: ImageIcon, group: "Campanha" },
+  { id: "eleicoes", label: "Gestão de Eleições", icon: CheckSquare, group: "Gestão Base" },
+  { id: "turmas", label: "Turmas & Alunos", icon: GraduationCap, group: "Gestão Base" },
+  { id: "candidatos", label: "Base de Candidatos", icon: UserCheck, group: "Gestão Base" },
+  { id: "admins", label: "Administradores", icon: ShieldCheck, group: "Sistema" },
+  { id: "logs", label: "Logs do Sistema", icon: ActivitySquare, group: "Sistema" },
+  { id: "perfil", label: "Meu Perfil", icon: User, group: "Conta" },
 ];
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
@@ -44,7 +66,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const [validadeStr, setValidadeStr] = useState("");
   
   const [activeTab, setActiveTab] = useState<Tab>("apuracao");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // NOVO: Controle da Sidebar Mobile
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [showVotes, setShowVotes] = useState(false);
@@ -134,7 +156,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const eleicaoSelecionada = allEleicoes.find(e => e.id === apuracaoEleicaoId);
   const isEleicaoGlobal = eleicaoSelecionada?.tipo === 'universal' || eleicaoSelecionada?.tipo === 'geral';
 
-  // LÓGICAS MANTIDAS INTACTAS
+  // LÓGICAS INTELIGENTES DE CÁLCULO
   const estatisticasEscola = useMemo(() => {
     const totalEleitores = allStudents.length;
     const eleitoresQueVotaram = new Set(allVotes.map(v => v.voter_name || "Anônimo")).size; 
@@ -264,7 +286,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const handleDeleteVote = async (id: string, voterName: string) => {
     if (!window.confirm("Atenção! Excluir este voto permanentemente?")) return;
     const { error } = await supabase.from('votes').delete().eq('id', id);
-    if (!error) { setAllVotes(prev => prev.filter(v => v.id !== id)); toast({ title: "Sucesso", description: "Voto excluído com sucesso." }); }
+    if (!error) {
+      setAllVotes(prev => prev.filter(v => v.id !== id));
+      toast({ title: "Sucesso", description: "Voto excluído com sucesso." });
+    }
   };
 
   const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
@@ -324,29 +349,12 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
   };
 
-  // ========================================================================
-  // NOVO LAYOUT ENTERPRISE COM SIDEBAR
-  // ========================================================================
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  const menuItems = [
-    { id: "apuracao", label: "Dashboard", icon: <BarChart3 className="w-5 h-5" />, group: "Resultados" },
-    { id: "reports", label: "Auditoria", icon: <FileText className="w-5 h-5" />, group: "Resultados" },
-    { id: "midias", label: "Estúdio de Mídias", icon: <ImageIcon className="w-5 h-5" />, group: "Campanha" },
-    { id: "eleicoes", label: "Eleições", icon: <CheckSquare className="w-5 h-5" />, group: "Gestão Base" },
-    { id: "turmas", label: "Turmas & Alunos", icon: <GraduationCap className="w-5 h-5" />, group: "Gestão Base" },
-    { id: "candidatos", label: "Candidatos", icon: <UserCheck className="w-5 h-5" />, group: "Gestão Base" },
-    { id: "admins", label: "Administradores", icon: <ShieldCheck className="w-5 h-5" />, group: "Sistema" },
-    { id: "logs", label: "Logs de Segurança", icon: <ActivitySquare className="w-5 h-5" />, group: "Sistema" },
-    { id: "perfil", label: "Meu Perfil", icon: <User className="w-5 h-5" />, group: "Conta" },
-  ];
-
   const renderContent = () => {
     switch (activeTab) {
       case "apuracao":
         return (
-          <div className="space-y-6">
-             <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-6 md:p-8 rounded-2xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-8 border border-slate-800 relative overflow-hidden">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-6 md:p-8 rounded-3xl shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-8 border border-slate-800 relative overflow-hidden">
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
               <div className="flex-1 w-full z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -360,7 +368,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Abstenção Atual</p><p className="text-3xl font-black text-red-400">{estatisticasEscola.abstencao}%</p></div>
                 </div>
               </div>
-              <div className="w-full md:w-80 bg-white/10 backdrop-blur-sm p-5 rounded-2xl z-10 flex flex-col">
+              <div className="w-full md:w-80 bg-white/10 backdrop-blur-sm p-5 rounded-2xl z-10 flex flex-col border border-white/10">
                 <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2"><Trophy className="w-5 h-5 text-yellow-500" /><h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Top 5 Turmas</h3></div>
                 <div className="space-y-3">
                   {rankingTurmas.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">Aguardando votos...</p> : rankingTurmas.map((turma, index) => (
@@ -370,7 +378,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-end gap-4 mt-8">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-end gap-4 mt-8">
               <div className="flex-1 w-full">
                 <label className="text-xs font-bold text-blue-600 uppercase mb-2 block flex items-center gap-1"><Filter className="w-4 h-4"/> 1. Qual eleição deseja apurar?</label>
                 <select className="w-full p-4 border-2 border-blue-200 rounded-xl text-lg font-black bg-blue-50 text-blue-900 outline-none focus:border-blue-600 transition-colors cursor-pointer" value={apuracaoEleicaoId} onChange={e => setApuracaoEleicaoId(e.target.value)}>
@@ -402,14 +410,14 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             </div>
 
             {reportLoading ? <div className="py-12 text-center text-slate-400 font-bold animate-pulse">Calculando...</div> : apuracaoResults?.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">Sem resultados para estes filtros.</div>
+              <div className="py-12 text-center text-slate-400 border-2 border-dashed rounded-3xl mt-8">Sem resultados para estes filtros.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 {apuracaoResults?.map((result, idx) => (
-                  <div key={idx} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-                    <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><h3 className="text-lg font-black uppercase tracking-widest">{result.role}</h3><span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos</span></div>
+                  <div key={idx} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+                    <div className="bg-slate-800 text-white p-5 flex justify-between items-center"><h3 className="text-lg font-black uppercase tracking-widest">{result.role}</h3><span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos</span></div>
                     <div className="p-6 flex-1 space-y-6">
-                      {result.candidateResults.map((cand, cIdx) => (
+                      {result.candidateResults.length === 0 ? <p className="text-sm text-slate-400 text-center py-4">Nenhum candidato.</p> : result.candidateResults.map((cand, cIdx) => (
                           <div key={cand.id} className="relative">
                             <div className="flex justify-between items-end mb-1">
                                <p className="font-bold text-slate-800 truncate pr-2">{cIdx === 0 && result.totalVotes > 0 && <CheckCircle2 className="w-4 h-4 text-green-500 inline" />} {cand.name}</p>
@@ -426,107 +434,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         );
 
-      case "reports":
-        return (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3"><Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria</h2>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Eleição</label>
-                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white font-bold" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value, turmaId: ""})}>
-                    {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
-                  </select>
-                </div>
-                {(!filters.eleicaoId || !isFilterEleicaoGlobal) && (
-                  <div className="space-y-1 animate-in fade-in">
-                    <label className="text-xs font-bold text-slate-500">Turma</label>
-                    <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}>
-                      <option value="">Todas as Turmas</option>
-                      {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Buscar</label>
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                    <input type="text" placeholder="Nome do Aluno" className="w-full pl-9 p-2.5 border rounded-lg text-sm" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Tipo de Voto</label>
-                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}>
-                    <option value="">Todos</option>
-                    <option value="candidate">Válidos (Candidatos)</option>
-                    <option value="branco">Em Branco</option>
-                    <option value="nulo">Nulos</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Data da Votação</label>
-                  <div className="relative">
-                    <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                    <input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} />
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
-                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
-                <div className="flex gap-2 w-full md:w-auto">
-                  <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"><Download className="w-4 h-4" /> Exportar Planilha</button>
-                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"><Printer className="w-4 h-4" /> {isPrinting ? "Gerando..." : "Salvar PDF"}</button>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada de Votos</span>
-                <button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">
-                  {showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR VOTOS" : "REVELAR VOTOS"}
-                </button>
-              </div>
-              <div className="overflow-x-auto min-h-[400px]">
-                {reportLoading ? (
-                  <div className="p-12 text-center text-slate-400 font-bold animate-pulse">A carregar registos da base de dados...</div>
-                ) : paginatedReport.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">Nenhum voto encontrado para os filtros selecionados.</div>
-                ) : (
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10"><tr className="text-[10px] text-slate-500 uppercase"><th className="p-4 font-black">Data/Hora</th><th className="p-4 font-black">Eleição</th><th className="p-4 font-black">Turma</th><th className="p-4 font-black">Eleitor</th><th className="p-4 font-black text-center">Voto Computado</th><th className="p-4 font-black text-center">Ação</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {paginatedReport.map((v, i) => (
-                        <tr key={v.id || i} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
-                          <td className="p-4 font-semibold text-slate-700 text-xs">{getEleicaoNome(v.eleicao_id)}</td>
-                          <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
-                          <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name || "Desconhecido"}</p></td>
-                          <td className="p-4 text-center">
-                            {showVotes ? (
-                              <><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">{v.candidate_role || 'Geral'}</span><span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>{v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type?.toUpperCase() || ''}</span></>
-                            ) : (
-                              <span className="text-slate-300 italic text-xs flex justify-center items-center gap-1"><Lock className="w-3 h-3" /> Sigilo Ativo</span>
-                            )}
-                          </td>
-                          <td className="p-4 text-center"><button onClick={() => handleDeleteVote(v.id!, v.voter_name || "Desconhecido")} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir voto"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-              {totalPages > 1 && (
-                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center"><p className="text-xs text-slate-500 font-bold">Página {currentPage} de {totalPages}</p><div className="flex gap-2"><button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"><ChevronRight className="w-4 h-4" /></button></div></div>
-              )}
-            </div>
-          </div>
-        );
-
       case "midias":
         return (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><ImageIcon className="w-6 h-6 text-blue-600" /> Estúdio de Campanhas</h2>
                 <p className="text-sm text-slate-500 font-medium">Imprima crachás e santinhos em lotes de folha A4.</p>
@@ -548,21 +459,18 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {allCandidates.filter(c => c.name.toLowerCase().includes(midiaSearch.toLowerCase())).map(cand => (
-                <div key={cand.id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col hover:shadow-md transition-shadow">
+                <div key={cand.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h3 className="font-black text-slate-800 leading-tight">{cand.name}</h3>
                       <p className="text-xs text-slate-400 font-bold mt-0.5">Nº {cand.candidate_number} • Turma: {getTurmaName(cand.turma_id)}</p>
                     </div>
                   </div>
-                  
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 mb-4 mt-2">
-                    <p className="text-[10px] text-slate-500 font-bold mb-1 uppercase text-center">Ações de Auditoria</p>
                     <button onClick={() => handleRevokeCandidate(cand.id, cand.name)} className="w-full bg-white border border-red-200 text-red-600 hover:bg-red-50 py-1.5 rounded-md text-[10px] font-bold transition-colors">
                       Revogar Candidatura
                     </button>
                   </div>
-
                   <div className="mt-auto flex gap-2 pt-3 border-t border-slate-100">
                     <button onClick={() => printDocs([cand], false)} disabled={isPrinting} className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"><FileText className="w-3 h-3" /> Santinho</button>
                     <button onClick={() => printDocs([cand], true)} disabled={isPrinting} className="flex-1 bg-slate-900 text-white hover:bg-slate-800 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"><Contact className="w-3 h-3" /> Crachá</button>
@@ -573,16 +481,81 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         );
 
+      case "reports":
+        return (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3"><Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria</h2>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">Eleição</label>
+                  <select className="w-full p-2.5 border rounded-lg text-sm bg-white font-bold" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value, turmaId: ""})}>
+                    <option value="">Todas as Eleições</option>
+                    {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                  </select>
+                </div>
+                {(!filters.eleicaoId || !isFilterEleicaoGlobal) && (
+                  <div className="space-y-1 animate-in fade-in">
+                    <label className="text-xs font-bold text-slate-500">Turma</label>
+                    <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}>
+                      <option value="">Todas as Turmas</option>
+                      {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Buscar</label><div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Nome do Aluno" className="w-full pl-9 p-2.5 border rounded-lg text-sm" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} /></div></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Tipo de Voto</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}><option value="">Todos</option><option value="candidate">Válidos</option><option value="branco">Em Branco</option><option value="nulo">Nulos</option></select></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Data</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} /></div></div>
+              </div>
+              <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
+                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
+                <div className="flex gap-2 w-full md:w-auto">
+                  <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> CSV</button>
+                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Printer className="w-4 h-4" /> PDF</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-5 border-b bg-slate-50 flex justify-between items-center"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada</span><button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">{showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR" : "REVELAR"}</button></div>
+              <div className="overflow-x-auto min-h-[400px]">
+                {reportLoading ? <div className="p-12 text-center text-slate-400 font-bold animate-pulse">A carregar...</div> : paginatedReport.length === 0 ? <div className="p-12 text-center text-slate-400">Nenhum voto encontrado.</div> : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10"><tr className="text-[10px] text-slate-500 uppercase"><th className="p-4 font-black">Data/Hora</th><th className="p-4 font-black">Eleição</th><th className="p-4 font-black">Turma</th><th className="p-4 font-black">Eleitor</th><th className="p-4 font-black text-center">Voto</th><th className="p-4 font-black text-center">Ação</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedReport.map((v, i) => (
+                        <tr key={v.id || i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 text-xs text-slate-500">{v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-'}</td>
+                          <td className="p-4 font-semibold text-slate-700 text-xs">{getEleicaoNome(v.eleicao_id)}</td>
+                          <td className="p-4 font-semibold text-slate-700">{getTurmaName(v.turma_id)}</td>
+                          <td className="p-4"><p className="font-bold text-slate-900">{v.voter_name || "Desconhecido"}</p></td>
+                          <td className="p-4 text-center">
+                            {showVotes ? <><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">{v.candidate_role || 'Geral'}</span><span className={`font-black ${v.vote_type === 'candidate' ? 'text-blue-600' : 'text-slate-400'}`}>{v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : v.vote_type?.toUpperCase() || ''}</span></> : <span className="text-slate-300 italic text-xs flex justify-center items-center gap-1"><Lock className="w-3 h-3" /> Sigilo</span>}
+                          </td>
+                          <td className="p-4 text-center"><button onClick={() => handleDeleteVote(v.id!, v.voter_name || "Desconhecido")} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              {totalPages > 1 && (
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center"><p className="text-xs text-slate-500 font-bold">Página {currentPage} de {totalPages}</p><div className="flex gap-2"><button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button></div></div>
+              )}
+            </div>
+          </div>
+        );
+
       case "logs":
         return (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+          <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm animate-in fade-in duration-300">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div>
                 <div><h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2><p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p></div>
               </div>
               <button onClick={downloadSnapshot} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-lg">
-                <Database className="w-4 h-4" /> Descarregar Snapshot JSON
+                <Database className="w-4 h-4" /> Descarregar JSON
               </button>
             </div>
             <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
@@ -597,20 +570,20 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
           </div>
         );
 
-      case "candidatos": return <ManageCandidatos />;
-      case "eleicoes": return <ManageEleicoes />;
-      case "turmas": return <ManageTurmas onTurmasChanged={onTurmasChanged} />;
-      case "admins": return <ManageAdmins />;
-      case "perfil": return <MeuPerfil escolaNome={escolaNome} />;
+      case "candidatos": return <div className="animate-in fade-in duration-300"><ManageCandidatos /></div>;
+      case "eleicoes": return <div className="animate-in fade-in duration-300"><ManageEleicoes /></div>;
+      case "turmas": return <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm animate-in fade-in duration-300"><ManageTurmas onTurmasChanged={onTurmasChanged} /></div>;
+      case "admins": return <div className="animate-in fade-in duration-300"><ManageAdmins /></div>;
+      case "perfil": return <div className="animate-in fade-in duration-300"><MeuPerfil escolaNome={escolaNome} /></div>;
       default: return null;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans overflow-hidden">
+    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col md:flex-row font-sans overflow-hidden">
       
       {/* HEADER MOBILE */}
-      <div className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-50">
+      <div className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
           {escolaLogo ? <img src={escolaLogo} alt="Logo" className="w-8 h-8 object-contain" /> : <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-white"/></div>}
           <h1 className="font-black text-sm uppercase tracking-widest">{escolaNome}</h1>
@@ -620,73 +593,66 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         </button>
       </div>
 
-      {/* SIDEBAR ENTERPRISE (Desktop + Mobile Drawer) */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out flex flex-col
-        ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
-        md:relative md:translate-x-0 md:flex-shrink-0
-      `}>
-        <div className="p-6 hidden md:flex flex-col items-center border-b border-slate-100">
-           {escolaLogo ? (
-             <img src={escolaLogo} alt="Logo" className="h-16 w-auto object-contain mb-3 drop-shadow-sm" />
-           ) : (
-             <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg shadow-blue-600/20">
-               <ShieldCheck className="w-8 h-8 text-white"/>
-             </div>
-           )}
-           <h1 className="font-black text-center uppercase tracking-widest text-slate-800 text-sm leading-tight">{escolaNome}</h1>
-           <span className="text-[10px] font-bold text-slate-400 uppercase mt-1">Classroom Vote Enterprise</span>
-        </div>
+      {/* DOCK FLUTUANTE (Nav Pill) - DESKTOP */}
+      <div className="hidden md:flex flex-col h-screen py-6 pl-6 z-50">
+        <nav className="bg-white border border-slate-200 shadow-xl rounded-[30px] flex flex-col items-center gap-4 w-[76px] h-full overflow-y-auto custom-scrollbar relative py-6">
+          <div className="mb-4">
+             {escolaLogo ? (
+               <img src={escolaLogo} alt="Logo" className="w-12 h-12 object-contain" />
+             ) : (
+               <div className="w-12 h-12 bg-blue-600 rounded-[20px] flex items-center justify-center shadow-lg shadow-blue-600/20">
+                 <ShieldCheck className="w-6 h-6 text-white"/>
+               </div>
+             )}
+          </div>
+          <div className="flex flex-col gap-2 w-full px-3 flex-1 overflow-y-auto scrollbar-hide mt-2">
+            {menuItems.map(item => (
+              <DockItem key={item.id} icon={item.icon} label={item.label} isActive={activeTab === item.id} onClick={() => setActiveTab(item.id)} />
+            ))}
+          </div>
+          <div className="mt-auto flex flex-col gap-3 items-center pt-6 border-t border-slate-100 w-full">
+             <button onClick={() => window.open('/telao', '_blank')} title="Abrir Telão ao Vivo" className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition-all hover:scale-105 shadow-md">
+               <Maximize className="w-5 h-5" />
+             </button>
+             <button onClick={onBack} title="Sair do Painel" className="w-12 h-12 flex items-center justify-center rounded-2xl bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all">
+               <LogOut className="w-5 h-5" />
+             </button>
+          </div>
+        </nav>
+      </div>
 
-        <div className="flex-1 overflow-y-auto py-6 px-4 space-y-6 custom-scrollbar">
-          {Array.from(new Set(menuItems.map(m => m.group))).map((groupName) => (
-            <div key={groupName}>
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-3">{groupName}</h3>
-              <div className="space-y-1">
-                {menuItems.filter(item => item.group === groupName).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => { setActiveTab(item.id); setIsMobileMenuOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                      activeTab === item.id 
-                        ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-100" 
-                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                    }`}
-                  >
-                    <span className={activeTab === item.id ? "text-blue-600" : "text-slate-400"}>{item.icon}</span>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
-           <button onClick={() => window.open('/telao', '_blank')} className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-xl text-xs font-bold transition-colors shadow-md">
-             <Maximize className="w-4 h-4" /> ABRIR TELÃO AO VIVO
-           </button>
-           <button onClick={onBack} className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 p-3 rounded-xl text-xs font-bold transition-colors">
-             <ArrowLeft className="w-4 h-4" /> SAIR DO PAINEL
-           </button>
-        </div>
-      </aside>
-
-      {/* OVERLAY MOBILE */}
+      {/* MENU MOBILE (Drawer) */}
       {isMobileMenuOpen && (
-        <div onClick={() => setIsMobileMenuOpen(false)} className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden" />
+        <div className="md:hidden fixed inset-0 z-40 bg-white flex flex-col overflow-y-auto animate-in slide-in-from-top">
+          <div className="p-6 grid grid-cols-2 gap-4">
+            {menuItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <button key={item.id} onClick={() => { setActiveTab(item.id); setIsMobileMenuOpen(false); }} className={`flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all ${activeTab === item.id ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-slate-50 border-transparent text-slate-600"}`}>
+                  <Icon className="w-6 h-6" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-center">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-auto p-6 flex flex-col gap-3">
+             <button onClick={() => window.open('/telao', '_blank')} className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white p-4 rounded-xl font-bold"><Maximize className="w-5 h-5" /> Telão ao Vivo</button>
+             <button onClick={onBack} className="w-full flex items-center justify-center gap-2 bg-rose-50 text-rose-600 p-4 rounded-xl font-bold"><LogOut className="w-5 h-5" /> Sair</button>
+          </div>
+        </div>
       )}
 
       {/* ÁREA DE CONTEÚDO PRINCIPAL */}
-      <main className="flex-1 h-screen overflow-y-auto bg-slate-50 p-4 md:p-8">
+      <main className="flex-1 h-screen overflow-y-auto px-4 py-6 md:p-8">
         <div className="max-w-6xl mx-auto pb-20">
-          <div className="mb-8 flex items-center justify-between animate-in fade-in slide-in-from-left-4">
+          <div className="mb-6 flex items-center justify-between animate-in fade-in slide-in-from-left-4">
             <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-              {menuItems.find(m => m.id === activeTab)?.icon}
               {menuItems.find(m => m.id === activeTab)?.label}
             </h2>
+            <span className="bg-white border border-slate-200 text-slate-500 text-[10px] font-bold uppercase px-3 py-1 rounded-full hidden md:inline-block">
+              {menuItems.find(m => m.id === activeTab)?.group}
+            </span>
           </div>
-
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {renderContent()}
           </div>
