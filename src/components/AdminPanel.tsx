@@ -7,13 +7,15 @@ import ManageAdmins from "./ManageAdmins";
 import MeuPerfil from "./MeuPerfil";
 import ManageEleicoes from "./ManageEleicoes"; 
 import { toast } from "@/hooks/use-toast";
+import ManageCandidatos from "./ManageCandidatos"; 
+import { UserCheck } from "lucide-react"; 
 
 import { initMercadoPago } from '@mercadopago/sdk-react';
 initMercadoPago('TEST-COLOQUE-SUA-PUBLIC-KEY-AQUI');
 
 interface ExtendedVoteRecord { id?: string; turma_id?: string; eleicao_id?: string; voter_name: string; candidate_role: string; candidate_number: number | null; vote_type: "candidate" | "branco" | "nulo"; created_at?: string; }
 interface AdminLog { id: string; admin_email: string; acao: string; detalhes: string; created_at: string; }
-type Tab = "apuracao" | "reports" | "midias" | "eleicoes" | "turmas" | "admins" | "perfil" | "logs";
+type Tab = "apuracao" | "reports" | "midias" | "eleicoes" | "turmas" | "candidatos" | "admins" | "perfil" | "logs";
 interface AdminPanelProps { turma: Turma | null; onBack: () => void; onTurmasChanged: () => void; }
 
 const AdminPanel = ({ onBack, onTurmasChanged }: AdminPanelProps) => {
