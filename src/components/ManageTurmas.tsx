@@ -24,12 +24,48 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   const [tagInput, setTagInput] = useState("");
   const [isPrintingCard, setIsPrintingCard] = useState(false);
 
-  // ESTADOS DE BUSCA (INDEPENDENTES E GLOBAIS)
+  // ESTADOS DE BUSCA
   const [turmaSearch, setTurmaSearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  
+  // ESTADOS DA BUSCA GLOBAL NO BANCO DE DADOS
   const [globalStudentSearch, setGlobalStudentSearch] = useState("");
-  const [allGlobalStudents, setAllGlobalStudents] = useState<Student[]>([]);
+  const [globalSearchResults, setGlobalSearchResults] = useState<Student[]>([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
 
   useEffect(() => { fetchTurmas(); }, []);
+
+  // O "Debounce": Só pesquisa no Supabase 500ms após o utilizador parar de digitar
+  useEffect(() => {
+    const searchDb = async () => {
+      // Só pesquisa se tiver pelo menos 2 letras
+      if (globalStudentSearch.trim().length < 2) {
+        setGlobalSearchResults([]);
+        setIsSearchingGlobal(false);
+        return;
+      }
+      
+      setIsSearchingGlobal(true);
+      const tIds = turmas.map(t => t.id);
+      
+      if (tIds.length > 0) {
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .in('turma_id', tIds)
+          .ilike('name', `%${globalStudentSearch.trim()}%`)
+          .limit(30); // Traz no máximo 30 resultados para ser super rápido
+          
+        if (!error && data) {
+          setGlobalSearchResults(data);
+        }
+      }
+      setIsSearchingGlobal(false);
+    };
+
+    const timeoutId = setTimeout(() => { searchDb(); }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [globalStudentSearch, turmas]);
 
   const fetchTurmas = async () => {
     setLoading(true);
@@ -44,32 +80,17 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       if (eId) {
         setEscolaId(eId); setEscolaNome(eNome); setEscolaLogo(eLogo);
         const { data: turmasData } = await supabase.from('turmas').select('*').eq('escola_id', eId).order('name');
-        if (turmasData) {
-          setTurmas(turmasData);
-          await refreshGlobalStudents(turmasData);
-        }
+        if (turmasData) setTurmas(turmasData);
       }
     }
     setLoading(false);
-  };
-
-  // Função utilitária para manter a pesquisa global atualizada em cache
-  const refreshGlobalStudents = async (currentTurmas: Turma[]) => {
-    const tIds = currentTurmas.map(t => t.id);
-    if (tIds.length > 0) {
-      const { data } = await supabase.from('students').select('*').in('turma_id', tIds);
-      setAllGlobalStudents(data || []);
-    } else {
-      setAllGlobalStudents([]);
-    }
   };
 
   const handleAddTurma = async () => {
     if (!newTurmaName.trim() || !escolaId) return;
     const { data, error } = await supabase.from('turmas').insert([{ name: newTurmaName, escola_id: escolaId }]).select().single();
     if (!error && data) { 
-      const novasTurmas = [...turmas, data];
-      setTurmas(novasTurmas); 
+      setTurmas([...turmas, data]); 
       setNewTurmaName(""); 
       onTurmasChanged(); 
       toast({ title: "Sucesso", description: "Turma adicionada!" }); 
@@ -102,9 +123,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     await supabase.from('students').delete().eq('turma_id', id);
     const { error } = await supabase.from('turmas').delete().eq('id', id);
     if (!error) {
-      const novasTurmas = turmas.filter(t => t.id !== id);
-      setTurmas(novasTurmas);
-      await refreshGlobalStudents(novasTurmas);
+      setTurmas(turmas.filter(t => t.id !== id));
       if (selectedTurma?.id === id) setSelectedTurma(null);
       onTurmasChanged(); toast({ title: "Sucesso", description: "Turma e registos removidos." });
     } else { toast({ title: "Erro", description: error.message, variant: "destructive" }); }
@@ -117,7 +136,12 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     setStudents(data || []); setLoading(false);
   };
 
-  const selectTurma = (t: Turma) => { setSelectedTurma(t); fetchStudents(t.id); resetForm(); };
+  const selectTurma = (t: Turma) => { 
+    setSelectedTurma(t); 
+    fetchStudents(t.id); 
+    resetForm(); 
+    setStudentSearch(""); 
+  };
 
   const resetForm = () => { setNewStudent({ name: "", document: "", is_candidate: false, candidate_number: "", vice_name: "" }); setStudentTags([]); setTagInput(""); setEditingStudentId(null); };
 
@@ -156,7 +180,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       }
       
       fetchStudents(selectedTurma.id); 
-      await refreshGlobalStudents(turmas);
       resetForm();
     } catch (err: any) {
       console.error(err);
@@ -185,7 +208,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
       setStudents(students.filter(s => s.id !== id)); 
-      await refreshGlobalStudents(turmas);
       toast({ title: "Removido", description: "Aluno removido com sucesso." });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -206,7 +228,6 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
           else { 
             toast({ title: "Planilha Importada!", description: `${formattedStudents.length} alunos cadastrados.` }); 
             fetchStudents(selectedTurma.id); 
-            await refreshGlobalStudents(turmas);
           }
         }
         setLoading(false);
@@ -219,19 +240,20 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     const turma = turmas.find(t => t.id === student.turma_id);
     if (turma) {
       setSelectedTurma(turma);
-      setGlobalStudentSearch(""); 
+      setGlobalStudentSearch(""); // Limpa a barra para voltar ao ecrã de turmas
       setLoading(true);
       const { data } = await supabase.from('students').select('*').eq('turma_id', turma.id).order('name');
       setStudents(data || []);
       setLoading(false);
-      startEditStudent(student);
+      startEditStudent(student); // Coloca o aluno direto no modo de edição
     }
   };
 
-  // HELPER DA TURMA
   const getTurmaName = (turmaId: string) => turmas.find(t => t.id === turmaId)?.name || "Turma Desconhecida";
 
-  // IMPRESSÕES...
+  // ========================================================================
+  // IMPRESSÕES ECOLÓGICAS
+  // ========================================================================
   const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
 
   const generateCardHTML = (candidate: any, isBadge: boolean) => {
@@ -317,9 +339,9 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
     if (printWindow) { printWindow.document.write(html); printWindow.document.close(); setTimeout(() => setIsPrintingCard(false), 1000); }
   };
 
-  // FILTROS
+  // Filtros Locais
   const filteredTurmas = turmas.filter(t => t.name.toLowerCase().includes(turmaSearch.toLowerCase()));
-  const filteredGlobalStudents = allGlobalStudents.filter(s => s.name.toLowerCase().includes(globalStudentSearch.toLowerCase()));
+  const filteredStudents = students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()));
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
@@ -349,7 +371,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
             />
           </div>
 
-          {/* Busca Alunos Global */}
+          {/* Busca Alunos Global (Dinamica na BD) */}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-3 text-indigo-400" />
             <input 
@@ -359,16 +381,21 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
               value={globalStudentSearch}
               onChange={(e) => setGlobalStudentSearch(e.target.value)}
             />
+            {isSearchingGlobal && (
+              <Loader2 className="w-4 h-4 absolute right-3 top-3 text-indigo-400 animate-spin" />
+            )}
           </div>
         </div>
 
         <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1 custom-scrollbar">
           {globalStudentSearch.trim().length > 0 ? (
-            // RENDERIZA A BUSCA GLOBAL DE ALUNOS SE ESTIVER A DIGITAR
-            filteredGlobalStudents.length === 0 ? (
+            // RESULTADOS DA BUSCA GLOBAL
+            isSearchingGlobal ? (
+               <p className="text-center text-xs text-slate-400 mt-4">Procurando no banco de dados...</p>
+            ) : globalSearchResults.length === 0 ? (
               <p className="text-center text-xs text-slate-400 mt-4">Nenhum aluno encontrado na escola.</p>
             ) : (
-              filteredGlobalStudents.map(s => (
+              globalSearchResults.map(s => (
                 <div key={s.id} className="p-3 rounded-lg border bg-white cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 transition-colors shadow-sm" onClick={() => handleSelectGlobalStudent(s)}>
                   <p className="font-bold text-slate-800 text-sm">{s.name}</p>
                   <p className="text-[10px] text-slate-500 mt-0.5 font-bold uppercase tracking-wider flex items-center gap-1"><Users className="w-3 h-3"/> {getTurmaName(s.turma_id)}</p>
@@ -376,7 +403,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
               ))
             )
           ) : (
-            // RENDERIZA A LISTA NORMAL DE TURMAS
+            // LISTA NORMAL DE TURMAS
             filteredTurmas.length === 0 ? (
               <p className="text-center text-xs text-slate-400 mt-4">Nenhuma turma encontrada.</p>
             ) : (
@@ -451,18 +478,30 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="bg-slate-50 p-3 border-b border-slate-200 flex justify-between items-center">
+              <div className="bg-slate-50 p-3 border-b border-slate-200 flex flex-col md:flex-row justify-between md:items-center gap-3">
                 <h3 className="text-xs font-bold uppercase text-slate-500">Cidadãos Registrados ({students.length})</h3>
+                
+                {/* Busca de Alunos na Turma */}
+                <div className="relative w-full md:w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Buscar aluno na turma..." 
+                    className="w-full pl-8 p-1.5 border border-slate-300 rounded-md text-xs bg-white outline-none focus:border-blue-500 shadow-sm"
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                 {loading ? (
                   <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
-                ) : students.length === 0 ? (
-                  <div className="text-center p-8 text-sm text-slate-400">Nenhum aluno encontrado nesta turma.</div>
+                ) : filteredStudents.length === 0 ? (
+                  <div className="text-center p-8 text-sm text-slate-400">Nenhum aluno encontrado.</div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {students.map(s => (
+                    {filteredStudents.map(s => (
                       <div key={s.id} className="p-4 hover:bg-slate-50 flex items-center justify-between group transition-colors">
                         <div>
                           <p className="font-bold text-slate-800 flex items-center gap-2">
@@ -507,7 +546,7 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
               <Users className="w-10 h-10" />
             </div>
             <p className="font-black text-xl text-slate-700 mb-2">Selecione ou Pesquise</p>
-            <p className="text-sm font-medium text-slate-500 text-center max-w-sm">Para gerir alunos ou candidaturas, selecione uma turma na lista ou utilize a busca global para encontrar qualquer aluno na escola inteira.</p>
+            <p className="text-sm font-medium text-slate-500 text-center max-w-sm">Para gerir alunos, atribuir candidaturas e imprimir materiais de campanha, selecione uma turma na lista ou utilize a busca global para encontrar qualquer aluno na escola inteira.</p>
           </div>
         )}
       </div>
