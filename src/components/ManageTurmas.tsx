@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Plus, Trash2, Edit2, Users, Loader2, Save, X, UserPlus, UploadCloud, Tag, FileText, Contact, Search, Contact2, Zap, FolderOpen, UserX } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import Papa from 'papaparse';
+import { downloadCampaignPDF } from "@/lib/pdf-generator";
 
 // Importação dos novos componentes de UX
 import { ConfirmDialog } from "./ui/confirm-dialog";
@@ -220,24 +221,20 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
   // IMPRESSÕES ECOLÓGICAS MANTIDAS
   const escapeHtml = (t: string) => t ? t.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m] || m)) : '';
 
-  const generateCardHTML = (candidate: any, isBadge: boolean) => {
-    const primaryRole = candidate.candidate_role ? escapeHtml(candidate.candidate_role.split(',')[0].trim()) : "Candidato";
-    return `<div class="card ${isBadge ? 'badge-card' : 'santinho-card'}">${isBadge ? '<div class="hole-punch"></div>' : ''}<div class="header">${escolaLogo ? `<img src="${escolaLogo}" />` : `<span style="color:#fff; font-size: ${isBadge?'16px':'12px'};">🏛️</span>`}<span class="school-name">${escapeHtml(escolaNome)}</span></div>${isBadge ? '<div class="photo-area">3x4 FOTO</div>' : ''}<div class="info-area"><h1 class="name">${escapeHtml(candidate.name)}</h1><h2 class="role">${primaryRole}</h2><div class="details"><span>Turma: ${escapeHtml(getTurmaName(candidate.turma_id))}</span>${!isBadge && candidate.vice_name ? `<span>Vice: ${escapeHtml(candidate.vice_name)}</span>` : ''}${isBadge ? `<span>Ano Letivo: ${new Date().getFullYear()}</span>` : ''}</div><div class="number-badge">${!isBadge ? '<span class="vote-label">VOTE</span>' : ''}${candidate.candidate_number}</div></div></div>`;
-  };
-
-  const printDocs = (candidates: any[], isBadge: boolean) => {
+  // ========================================================================
+  // DOWNLOAD DO PDF (Nativo via @react-pdf/renderer)
+  // ========================================================================
+  const handleDownloadPDF = async (candidates: any[], isBadge: boolean) => {
     setIsPrintingCard(true);
-    const qtyPerPage = isBadge ? 4 : 8; 
-    const itemsToPrint = candidates.length === 1 ? Array(qtyPerPage).fill(candidates[0]) : candidates;
-    const pages = [];
-    for (let i = 0; i < itemsToPrint.length; i += qtyPerPage) {
-      const chunk = itemsToPrint.slice(i, i + qtyPerPage);
-      const cardsHtml = chunk.map(c => generateCardHTML(c, isBadge)).join('');
-      pages.push(`<div class="page">${cardsHtml}</div>`);
+    toast({ title: "A gerar ficheiro PDF...", description: "Por favor, aguarde alguns segundos." });
+    try {
+      await downloadCampaignPDF(candidates, isBadge, escolaNome, escolaLogo, turmas);
+      toast({ title: "Sucesso!", description: "Download do ficheiro PDF iniciado." });
+    } catch (err) {
+      toast({ title: "Erro na geração", description: "Ocorreu um erro ao montar o PDF.", variant: "destructive" });
+    } finally {
+      setIsPrintingCard(false);
     }
-    const html = `<html><head><title>Impressão Ecológica</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap'); @page { size: A4 ${isBadge ? 'portrait' : 'landscape'}; margin: ${isBadge ? '5mm' : '6mm'}; } body { margin:0; padding:0; font-family:'Inter',sans-serif; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .page { display: grid; justify-content: center; align-content: center; width: 100%; height: 100vh; page-break-after: always; ${isBadge ? 'grid-template-columns: repeat(2, 100mm); grid-template-rows: repeat(2, 140mm); gap: 4mm;' : 'grid-template-columns: repeat(4, 70mm); grid-template-rows: repeat(2, 100mm); gap: 2mm;'} } .card { border-radius: 8px; border: 1px dashed #cbd5e1; position: relative; display: flex; flex-direction: column; overflow: hidden; align-items: center; } .badge-card { background: white; width: 100mm; height: 140mm; } .santinho-card { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); width: 70mm; height: 100mm; } .santinho-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #fbbf24, #f59e0b); } .hole-punch { width: 15mm; height: 4mm; border-radius: 6px; border: 1px solid #cbd5e1; position: absolute; top: 5mm; background: #f8fafc; z-index: 10; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); } .header { width: 100%; position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; } .badge-card .header { height: 35mm; background: linear-gradient(135deg, #1e3a8a, #0f172a); justify-content: flex-end; padding-bottom: 4mm; } .santinho-card .header { padding: 6px; justify-content: center; border-bottom: 1px solid rgba(255,255,255,0.05); } .badge-card .header::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2mm; background: #fbbf24; } .header img { max-width: 100%; max-height: 100%; object-fit: contain; } .badge-card img { height: 10mm; margin-bottom: 1mm; } .santinho-card img { height: 25px; margin-bottom: 2px; } .school-name { font-weight: 900; text-transform: uppercase; } .badge-card .school-name { color: #f8fafc; font-size: 10px; letter-spacing: 1.5px; margin-top: 2mm; padding: 0 5mm; } .santinho-card .school-name { color: #94a3b8; font-size: 6px; letter-spacing: 1px; margin-bottom: 1px; } .photo-area { border: 2px dashed #cbd5e1; background: #f8fafc; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: bold; text-transform: uppercase; width: 35mm; height: 45mm; margin-top: 8mm; border-radius: 8px; font-size: 10px; } .info-area { text-align: center; flex: 1; display:flex; flex-direction:column; } .badge-card .info-area { margin-top: 4mm; padding: 0 6mm; width: 100%; box-sizing: border-box; } .santinho-card .info-area { padding: 8px; justify-content:center; } .name { font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1.1; letter-spacing: -0.5px; } .badge-card .name { color: #0f172a; font-size: 20px; } .santinho-card .name { color: #f8fafc; font-size: 14px; } .role { font-weight: 900; text-transform: uppercase; line-height: 1; } .badge-card .role { color: #1e3a8a; font-size: 14px; margin: 2mm 0 4mm 0; } .santinho-card .role { color: #f8fafc; font-size: 11px; margin: 0; } .details { font-weight: bold; display: flex; flex-direction: column; } .badge-card .details { color: #64748b; font-size: 10px; gap: 2px; margin-bottom: 2mm; } .santinho-card .details { color: #fbbf24; font-size: 7px; background: rgba(251,191,36,0.1); padding: 2px 6px; border-radius: 10px; margin-top: 6px; } .number-badge { font-weight: 900; line-height: 1; text-align:center; } .badge-card .number-badge { background: #0f172a; color: #fbbf24; display: inline-block; padding: 2mm 8mm; border-radius: 8px; font-size: 28px; margin-top: auto; margin-bottom: 8mm; } .santinho-card .number-badge { background: rgba(0,0,0,0.3); color: #ffffff; border: 1.5px solid #fbbf24; border-radius: 8px; display: inline-block; padding: 4px 15px; margin: 0 auto 6px auto; font-size: 28px; } .vote-label { font-size: 6px; color: #fbbf24; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 1px; } </style></head><body>${pages.join('')}<script>window.onload=()=>window.print()</script></body></html>`;
-    const printWindow = window.open("", "_blank");
-    if (printWindow) { printWindow.document.write(html); printWindow.document.close(); setTimeout(() => setIsPrintingCard(false), 1000); }
   };
 
   const filteredTurmas = turmas.filter(t => t.name.toLowerCase().includes(turmaSearch.toLowerCase()));
@@ -409,8 +406,8 @@ const ManageTurmas = ({ onTurmasChanged }: ManageTurmasProps) => {
                           <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                             {s.is_candidate && (
                               <>
-                                <button onClick={() => printDocs([s], false)} disabled={isPrintingCard} title="Santinhos (A4)" className="p-2.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"><FileText className="w-4 h-4"/></button>
-                                <button onClick={() => printDocs([s], true)} disabled={isPrintingCard} title="Crachás (A4)" className="p-2.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl mr-2 transition-colors"><Contact className="w-4 h-4"/></button>
+                                <button onClick={() => handleDownloadPDF([s], false)} disabled={isPrintingCard} title="Santinhos (A4)" className="p-2.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"><FileText className="w-4 h-4"/></button>
+                                <button onClick={() => handleDownloadPDF([s], true)} disabled={isPrintingCard} title="Crachás (A4)" className="p-2.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl mr-2 transition-colors"><Contact className="w-4 h-4"/></button>
                               </>
                             )}
                             <button onClick={() => startEditStudent(s)} className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"><Edit2 className="w-4 h-4"/></button>
