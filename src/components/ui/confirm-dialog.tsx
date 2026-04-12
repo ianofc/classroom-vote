@@ -33,7 +33,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent className="bg-white border-slate-200">
+      <AlertDialogContent className="bg-white border-slate-200 shadow-2xl sm:rounded-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-xl font-black text-slate-800">
             {title}
@@ -42,8 +42,8 @@ export function ConfirmDialog({
             {description}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={onClose} disabled={isLoading} className="border-slate-200 font-bold text-slate-600">
+        <AlertDialogFooter className="mt-4">
+          <AlertDialogCancel onClick={onClose} disabled={isLoading} className="border-slate-200 font-bold text-slate-600 hover:bg-slate-50">
             {cancelText}
           </AlertDialogCancel>
           <AlertDialogAction
@@ -52,7 +52,7 @@ export function ConfirmDialog({
               onConfirm();
             }}
             disabled={isLoading}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold transition-colors"
+            className="bg-red-600 hover:bg-red-700 text-white font-bold transition-colors shadow-md shadow-red-600/20"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             {confirmText}
