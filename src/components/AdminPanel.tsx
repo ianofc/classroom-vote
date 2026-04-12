@@ -5,7 +5,7 @@ import {
   ArrowLeft, ShieldCheck, FileText, Filter, Search, Calendar, Eye, EyeOff, 
   Lock, Trash2, GraduationCap, Printer, BarChart3, CheckCircle2, User, 
   CheckSquare, Maximize, ActivitySquare, ChevronLeft, ChevronRight, 
-  Download, Loader2, Trophy, Flame, Users, Target, 
+  Download, Loader2, Trophy, Flame, Users, Landmark, 
   Image as ImageIcon, Contact, Database, UserCheck, LogOut, Menu, X
 } from "lucide-react";
 
@@ -15,7 +15,7 @@ import MeuPerfil from "./MeuPerfil";
 import ManageEleicoes from "./ManageEleicoes"; 
 import ManageCandidatos from "./ManageCandidatos"; 
 import { toast } from "@/hooks/use-toast";
-import { downloadCampaignPDF } from "@/lib/pdf-generator"; // NOVO IMPORT DE PDF NATIVO
+import { downloadCampaignPDF } from "@/lib/pdf-generator";
 
 import { initMercadoPago } from '@mercadopago/sdk-react';
 initMercadoPago('TEST-COLOQUE-SUA-PUBLIC-KEY-AQUI');
@@ -25,9 +25,6 @@ interface AdminLog { id: string; admin_email: string; acao: string; detalhes: st
 type Tab = "apuracao" | "reports" | "midias" | "eleicoes" | "turmas" | "candidatos" | "admins" | "perfil" | "logs";
 interface AdminPanelProps { turma: Turma | null; onBack: () => void; onTurmasChanged: () => void; }
 
-// ============================================================================
-// COMPONENTE DE TOOLTIP CUSTOMIZADO (Para o Dock Flutuante)
-// ============================================================================
 const DockItem = ({ icon: Icon, label, isActive, onClick }: { icon: any, label: string, isActive: boolean, onClick: () => void }) => (
   <div className="relative group flex items-center justify-center">
     <button
@@ -47,21 +44,21 @@ const DockItem = ({ icon: Icon, label, isActive, onClick }: { icon: any, label: 
   </div>
 );
 
-// ESTRUTURA DO MENU
+// ESTRUTURA DO MENU DO ÁGORA OS
 const menuItems: { id: Tab, label: string, icon: React.ElementType, group: string }[] = [
   { id: "apuracao", label: "Dashboard ao Vivo", icon: BarChart3, group: "Resultados" },
   { id: "reports", label: "Auditoria Oficial", icon: FileText, group: "Resultados" },
   { id: "midias", label: "Estúdio de Mídias", icon: ImageIcon, group: "Campanha" },
-  { id: "eleicoes", label: "Gestão de Eleições", icon: CheckSquare, group: "Gestão Base" },
-  { id: "turmas", label: "Turmas & Alunos", icon: GraduationCap, group: "Gestão Base" },
+  { id: "eleicoes", label: "Gestão de Pleitos", icon: CheckSquare, group: "Gestão Base" },
+  { id: "turmas", label: "Zonas & Eleitores", icon: Users, group: "Gestão Base" },
   { id: "candidatos", label: "Base de Candidatos", icon: UserCheck, group: "Gestão Base" },
-  { id: "admins", label: "Administradores", icon: ShieldCheck, group: "Sistema" },
-  { id: "logs", label: "Logs do Sistema", icon: ActivitySquare, group: "Sistema" },
+  { id: "admins", label: "Juízes Eleitorais", icon: ShieldCheck, group: "Sistema" },
+  { id: "logs", label: "Logs de Sistema", icon: ActivitySquare, group: "Sistema" },
   { id: "perfil", label: "Meu Perfil", icon: User, group: "Conta" },
 ];
 
 const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
-  const [escolaNome, setEscolaNome] = useState("Carregando Escola...");
+  const [escolaNome, setEscolaNome] = useState("Carregando Sistema...");
   const [escolaLogo, setEscolaLogo] = useState<string | null>(null); 
   const [isExpired, setIsExpired] = useState(false); 
   const [validadeStr, setValidadeStr] = useState("");
@@ -107,7 +104,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         let escolaData: any = null;
         if (adminData?.escolas) escolaData = Array.isArray(adminData.escolas) ? adminData.escolas[0] : adminData.escolas;
         if (escolaData) {
-           setEscolaNome(escolaData.nome || "Escola");
+           setEscolaNome(escolaData.nome || "Instituição");
            if (escolaData.logo_url) setEscolaLogo(escolaData.logo_url);
            if (escolaData.valid_until) {
              const dataValidade = new Date(escolaData.valid_until);
@@ -157,7 +154,6 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const eleicaoSelecionada = allEleicoes.find(e => e.id === apuracaoEleicaoId);
   const isEleicaoGlobal = eleicaoSelecionada?.tipo === 'universal' || eleicaoSelecionada?.tipo === 'geral';
 
-  // LÓGICAS INTELIGENTES DE CÁLCULO
   const estatisticasEscola = useMemo(() => {
     const totalEleitores = allStudents.length;
     const eleitoresQueVotaram = new Set(allVotes.map(v => v.voter_name || "Anônimo")).size; 
@@ -246,7 +242,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const exportToCSV = () => {
     if (filteredReport.length === 0) { toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" }); return; }
-    let csvContent = "Data/Hora,Eleicao,Turma,Eleitor,Cargo,Voto_Computado\n";
+    let csvContent = "Data/Hora,Pleito,Zona,Eleitor,Cargo,Voto_Computado\n";
     filteredReport.forEach(v => {
       const data = v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : '-';
       const eleicao = getEleicaoNome(v.eleicao_id).replace(/,/g, ''); 
@@ -258,7 +254,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     });
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Auditoria_Votos_${new Date().getTime()}.csv`);
+    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Auditoria_AgoraOS_${new Date().getTime()}.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     toast({ title: "Sucesso", description: "Download concluído!" });
   };
@@ -276,7 +272,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
         return allData;
       };
       const [vData, tData, sData, eData, lData] = await Promise.all([ fetchEverything('votes'), fetchEverything('turmas'), fetchEverything('students'), fetchEverything('eleicoes'), fetchEverything('admin_logs') ]);
-      const snapshot = { app: "Classroom Vote Enterprise", version: "1.0", timestamp: new Date().toISOString(), escola: escolaNome, data: { eleicoes: eData, turmas: tData, students: sData, votes: vData, logs: lData } };
+      const snapshot = { app: "Ágora OS Enterprise", version: "2.0", timestamp: new Date().toISOString(), instituicao: escolaNome, data: { eleicoes: eData, zonas: tData, eleitores: sData, votos: vData, logs: lData } };
       const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a"); link.href = url; link.download = `snapshot_${new Date().getTime()}.json`; link.click();
@@ -297,7 +293,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const printDashboardReport = () => {
     setIsPrinting(true);
-    const tituloRelatorio = isEleicaoGlobal ? "Apuração Universal da Escola" : `Apuração - Turma: ${escapeHtml(getTurmaName(apuracaoTurmaId))}`;
+    const tituloRelatorio = isEleicaoGlobal ? "Apuração Universal" : `Apuração - Zona Eleitoral: ${escapeHtml(getTurmaName(apuracaoTurmaId))}`;
     const nomeEleicao = escapeHtml(getEleicaoNome(apuracaoEleicaoId));
     let rolesHtml = '';
     if (apuracaoResults && apuracaoResults.length > 0) {
@@ -308,7 +304,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       }).join('');
     } else { rolesHtml = `<p style="text-align: center; color: #666; margin-top: 40px;">Nenhum dado de votação encontrado.</p>`; }
 
-    const reportHtml = `<html><head><title>Boletim de Urna - ${nomeEleicao}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f4f4f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e4e4e7; } .overview div { text-align: center; width: 25%; border-right: 1px solid #ddd; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #111; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #202683; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #ccc; padding: 12px; text-align: left; } th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #555; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f8f9fa; border: 1px solid #ccc; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${escapeHtml(escolaNome)}</h1><div class="sub">Boletim Oficial de Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #333;">${tituloRelatorio}</h3><p style="margin:5px 0 0 0; color:#666;">Eleição: ${nomeEleicao}</p></div><div class="overview"><div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>${rolesHtml}<div class="rodape">Gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Classroom Vote Enterprise</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
+    const reportHtml = `<html><head><title>Boletim de Urna - ${nomeEleicao}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e2e8f0; } .overview div { text-align: center; width: 25%; border-right: 1px solid #e2e8f0; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #0f172a; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #0f172a; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; } th { background-color: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #475569; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 50px; border-top: 1px solid #e2e8f0; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${escapeHtml(escolaNome)}</h1><div class="sub">Boletim Oficial de Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #0f172a;">${tituloRelatorio}</h3><p style="margin:5px 0 0 0; color:#64748b;">Pleito: ${nomeEleicao}</p></div><div class="overview"><div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>${rolesHtml}<div class="rodape">Gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Ágora OS Enterprise</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
@@ -316,14 +312,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const printFilteredReport = () => {
     setIsPrinting(true);
     const rows = filteredReport.map(v => `<tr><td>${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '-'}</td><td>${escapeHtml(getEleicaoNome(v.eleicao_id))}</td><td>${escapeHtml(getTurmaName(v.turma_id))}</td><td><strong>${escapeHtml(v.voter_name)}</strong></td><td style="text-align: center; font-weight: bold;">${v.candidate_role ? `[${v.candidate_role}]<br/>` : ''}${v.vote_type === 'candidate' ? `Nº ${v.candidate_number}` : (v.vote_type || '').toUpperCase()}</td></tr>`).join("");
-    const reportHtml = `<html><head><title>Auditoria de Votação - ${escapeHtml(escolaNome)}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #202683; } .sub { color: #666; font-size: 14px; margin-top: 5px; } .filters { background: #f4f4f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e4e4e7; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ccc; padding: 10px; text-align: left; } th { background-color: #e4e4e7; font-weight: bold; text-transform: uppercase; font-size: 11px; } .rodape { text-align: center; font-size: 10px; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${escapeHtml(escolaNome)}</h1><div class="sub">Relatório Oficial de Auditoria Cadastral</div></div><div class="filters"><strong>Filtros aplicados na pesquisa:</strong><br/>Eleição: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todas'} | Turma: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? (filters.voteType || '').toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}</div><p><strong>Total de votos encontrados: ${filteredReport.length}</strong></p><table><thead><tr><th>Data/Hora</th><th>Eleição</th><th>Turma</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead><tbody>${rows}</tbody></table><div class="rodape">Gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Classroom Vote Enterprise</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
+    const reportHtml = `<html><head><title>Auditoria - ${escapeHtml(escolaNome)}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; } .sub { color: #666; font-size: 14px; margin-top: 5px; } .filters { background: #f8fafc; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e2e8f0; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; } th { background-color: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 11px; } .rodape { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${escapeHtml(escolaNome)}</h1><div class="sub">Relatório Oficial de Auditoria Cadastral</div></div><div class="filters"><strong>Filtros aplicados na pesquisa:</strong><br/>Pleito: ${filters.eleicaoId ? getEleicaoNome(filters.eleicaoId) : 'Todos'} | Zona: ${filters.turmaId ? getTurmaName(filters.turmaId) : 'Todas'} | Tipo: ${filters.voteType ? (filters.voteType || '').toUpperCase() : 'Todos'} | Data: ${filters.date ? new Date(filters.date).toLocaleDateString('pt-BR') : 'Todas'} <br/> Busca por nome: ${filters.search || 'Nenhuma'}</div><p><strong>Total de registos: ${filteredReport.length}</strong></p><table><thead><tr><th>Data/Hora</th><th>Pleito</th><th>Zona Eleitoral</th><th>Eleitor</th><th>Voto Registrado</th></tr></thead><tbody>${rows}</tbody></table><div class="rodape">Gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Ágora OS Enterprise</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
 
-  // ========================================================================
-  // DOWNLOAD DO PDF (Nativo via @react-pdf/renderer)
-  // ========================================================================
   const handleDownloadPDF = async (candidates: any[], isBadge: boolean) => {
     setIsPrinting(true);
     toast({ title: "A gerar ficheiro PDF...", description: "O ficheiro será descarregado em breve." });
@@ -338,11 +331,11 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   };
 
   const handleRevokeCandidate = async (id: string, name: string) => {
-    if (!confirm(`O candidato ${name} desistiu da eleição ou seus cargos estão incorretos?\nIsto removerá a candidatura permanentemente.`)) return;
+    if (!confirm(`O candidato ${name} desistiu do pleito?\nIsto removerá a candidatura permanentemente.`)) return;
     const { error } = await supabase.from('students').update({ is_candidate: false, candidate_role: null, candidate_number: null }).eq('id', id);
     if (!error) {
       setAllCandidates(prev => prev.filter(c => c.id !== id));
-      toast({ title: "Candidatura Removida", description: "O aluno já não aparecerá nas urnas." });
+      toast({ title: "Candidatura Removida", description: "O eleitor já não aparecerá nas urnas." });
     }
   };
 
@@ -366,7 +359,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 </div>
               </div>
               <div className="w-full md:w-80 bg-white/10 backdrop-blur-sm p-5 rounded-2xl z-10 flex flex-col border border-white/10">
-                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2"><Trophy className="w-5 h-5 text-yellow-500" /><h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Top 5 Turmas</h3></div>
+                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2"><Trophy className="w-5 h-5 text-yellow-500" /><h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Top 5 Zonas</h3></div>
                 <div className="space-y-3">
                   {rankingTurmas.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">Aguardando votos...</p> : rankingTurmas.map((turma, index) => (
                       <div key={turma.id} className="flex justify-between group"><p className="text-sm font-bold text-slate-200">{index + 1}º {turma.nome}</p><p className="text-sm font-black text-white">{turma.engajamento}%</p></div>
@@ -377,18 +370,18 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-end gap-4 mt-8">
               <div className="flex-1 w-full">
-                <label className="text-xs font-bold text-blue-600 uppercase mb-2 block flex items-center gap-1"><Filter className="w-4 h-4"/> 1. Qual eleição deseja apurar?</label>
+                <label className="text-xs font-bold text-blue-600 uppercase mb-2 block flex items-center gap-1"><Filter className="w-4 h-4"/> 1. Qual pleito deseja apurar?</label>
                 <select className="w-full p-4 border-2 border-blue-200 rounded-xl text-lg font-black bg-blue-50 text-blue-900 outline-none focus:border-blue-600 transition-colors cursor-pointer" value={apuracaoEleicaoId} onChange={e => setApuracaoEleicaoId(e.target.value)}>
-                  {allEleicoes.length === 0 && <option value="">Nenhuma Eleição Encontrada</option>}
-                  {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome} {e.status === 'ativa' ? '(ATIVA)' : '(ENCERRADA)'}</option>)}
+                  {allEleicoes.length === 0 && <option value="">Nenhum Pleito Encontrado</option>}
+                  {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome} {e.status === 'ativa' ? '(ATIVO)' : '(ENCERRADO)'}</option>)}
                 </select>
               </div>
 
               {!isEleicaoGlobal && (
                 <div className="flex-1 w-full animate-in fade-in">
-                  <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-1"><Users className="w-4 h-4"/> 2. Selecione a Turma</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-1"><Users className="w-4 h-4"/> 2. Selecione a Zona</label>
                   <select className="w-full p-4 border-2 border-slate-200 rounded-xl text-lg font-bold bg-slate-50 outline-none focus:border-slate-400 cursor-pointer" value={apuracaoTurmaId} onChange={e => setApuracaoTurmaId(e.target.value)}>
-                    <option value="">-- Escolha uma Turma --</option>
+                    <option value="">-- Escolha uma Zona Eleitoral --</option>
                     {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
@@ -406,7 +399,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-slate-500">NULOS</p><p className="text-3xl font-black text-orange-500">{apuracaoOverview.nulos}</p></div>
             </div>
 
-            {reportLoading ? <div className="py-12 text-center text-slate-400 font-bold animate-pulse">Calculando...</div> : apuracaoResults?.length === 0 ? (
+            {reportLoading ? <div className="py-12 text-center text-slate-400 font-bold animate-pulse">A calcular resultados...</div> : apuracaoResults?.length === 0 ? (
               <div className="py-12 text-center text-slate-400 border-2 border-dashed rounded-3xl mt-8">Sem resultados para estes filtros.</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
@@ -414,7 +407,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <div key={idx} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                     <div className="bg-slate-800 text-white p-5 flex justify-between items-center"><h3 className="text-lg font-black uppercase tracking-widest">{result.role}</h3><span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{result.totalVotes} votos</span></div>
                     <div className="p-6 flex-1 space-y-6">
-                      {result.candidateResults.length === 0 ? <p className="text-sm text-slate-400 text-center py-4">Nenhum candidato.</p> : result.candidateResults.map((cand, cIdx) => (
+                      {result.candidateResults.length === 0 ? <p className="text-sm text-slate-400 text-center py-4">Nenhum candidato concorrendo.</p> : result.candidateResults.map((cand, cIdx) => (
                           <div key={cand.id} className="relative">
                             <div className="flex justify-between items-end mb-1">
                                <p className="font-bold text-slate-800 truncate pr-2">{cIdx === 0 && result.totalVotes > 0 && <CheckCircle2 className="w-4 h-4 text-green-500 inline" />} {cand.name}</p>
@@ -437,7 +430,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><ImageIcon className="w-6 h-6 text-blue-600" /> Estúdio de Campanhas</h2>
-                <p className="text-sm text-slate-500 font-medium">Imprima crachás e santinhos em lotes de folha A4.</p>
+                <p className="text-sm text-slate-500 font-medium">Imprima crachás e santinhos eleitorais em lotes A4.</p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                 <button onClick={() => handleDownloadPDF(allCandidates.filter(c => c.name.toLowerCase().includes(midiaSearch.toLowerCase())), false)} disabled={isPrinting} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
@@ -460,7 +453,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h3 className="font-black text-slate-800 leading-tight">{cand.name}</h3>
-                      <p className="text-xs text-slate-400 font-bold mt-0.5">Nº {cand.candidate_number} • Turma: {getTurmaName(cand.turma_id)}</p>
+                      <p className="text-xs text-slate-400 font-bold mt-0.5">Nº {cand.candidate_number} • Zona: {getTurmaName(cand.turma_id)}</p>
                     </div>
                   </div>
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 mb-4 mt-2">
@@ -485,30 +478,30 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b pb-3"><Filter className="w-5 h-5 text-blue-600" /> Relatório Geral e Auditoria</h2>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500">Eleição</label>
+                  <label className="text-xs font-bold text-slate-500">Pleito</label>
                   <select className="w-full p-2.5 border rounded-lg text-sm bg-white font-bold" value={filters.eleicaoId} onChange={e => setFilters({...filters, eleicaoId: e.target.value, turmaId: ""})}>
-                    <option value="">Todas as Eleições</option>
+                    <option value="">Todos os Pleitos</option>
                     {allEleicoes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
                   </select>
                 </div>
                 {(!filters.eleicaoId || !isFilterEleicaoGlobal) && (
                   <div className="space-y-1 animate-in fade-in">
-                    <label className="text-xs font-bold text-slate-500">Turma</label>
+                    <label className="text-xs font-bold text-slate-500">Zona Eleitoral</label>
                     <select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.turmaId} onChange={e => setFilters({...filters, turmaId: e.target.value})}>
-                      <option value="">Todas as Turmas</option>
+                      <option value="">Todas as Zonas</option>
                       {allTurmas.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
                   </div>
                 )}
-                <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Buscar</label><div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Nome do Aluno" className="w-full pl-9 p-2.5 border rounded-lg text-sm" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} /></div></div>
+                <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Buscar Eleitor</label><div className="relative"><Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="text" placeholder="Nome ou Documento" className="w-full pl-9 p-2.5 border rounded-lg text-sm" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} /></div></div>
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Tipo de Voto</label><select className="w-full p-2.5 border rounded-lg text-sm bg-white" value={filters.voteType} onChange={e => setFilters({...filters, voteType: e.target.value})}><option value="">Todos</option><option value="candidate">Válidos</option><option value="branco">Em Branco</option><option value="nulo">Nulos</option></select></div>
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Data</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} /></div></div>
               </div>
               <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
-                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos totais.</p>
+                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos no sistema.</p>
                 <div className="flex gap-2 w-full md:w-auto">
-                  <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> CSV</button>
-                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Printer className="w-4 h-4" /> PDF</button>
+                  <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Exportar CSV</button>
+                  <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Printer className="w-4 h-4" /> Relatório PDF</button>
                 </div>
               </div>
             </div>
@@ -516,9 +509,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-5 border-b bg-slate-50 flex justify-between items-center"><span className="text-xs font-black text-slate-500 uppercase tracking-wider">Listagem Paginada</span><button onClick={() => setShowVotes(!showVotes)} className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded-md hover:bg-slate-100 flex items-center gap-1 shadow-sm transition-colors">{showVotes ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />} {showVotes ? "OCULTAR" : "REVELAR"}</button></div>
               <div className="overflow-x-auto min-h-[400px]">
-                {reportLoading ? <div className="p-12 text-center text-slate-400 font-bold animate-pulse">A carregar...</div> : paginatedReport.length === 0 ? <div className="p-12 text-center text-slate-400">Nenhum voto encontrado.</div> : (
+                {reportLoading ? <div className="p-12 text-center text-slate-400 font-bold animate-pulse">A carregar registos eleitorais...</div> : paginatedReport.length === 0 ? <div className="p-12 text-center text-slate-400">Nenhum voto encontrado.</div> : (
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10"><tr className="text-[10px] text-slate-500 uppercase"><th className="p-4 font-black">Data/Hora</th><th className="p-4 font-black">Eleição</th><th className="p-4 font-black">Turma</th><th className="p-4 font-black">Eleitor</th><th className="p-4 font-black text-center">Voto</th><th className="p-4 font-black text-center">Ação</th></tr></thead>
+                    <thead className="bg-slate-50 sticky top-0 shadow-sm z-10"><tr className="text-[10px] text-slate-500 uppercase"><th className="p-4 font-black">Data/Hora</th><th className="p-4 font-black">Pleito</th><th className="p-4 font-black">Zona</th><th className="p-4 font-black">Eleitor</th><th className="p-4 font-black text-center">Voto</th><th className="p-4 font-black text-center">Ação</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {paginatedReport.map((v, i) => (
                         <tr key={v.id || i} className="hover:bg-slate-50/50 transition-colors">
@@ -549,10 +542,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-red-100 text-red-600 rounded-xl"><ActivitySquare className="w-6 h-6" /></div>
-                <div><h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2><p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de quem fez o quê.</p></div>
+                <div><h2 className="text-xl font-black text-slate-800">Logs de Segurança do Sistema</h2><p className="text-sm text-slate-500 font-medium">Auditoria rigorosa. Registo imutável de ações.</p></div>
               </div>
               <button onClick={downloadSnapshot} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-lg">
-                <Database className="w-4 h-4" /> Descarregar JSON
+                <Database className="w-4 h-4" /> Descarregar DB (JSON)
               </button>
             </div>
             <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
@@ -582,7 +575,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       {/* HEADER MOBILE */}
       <div className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
-          {escolaLogo ? <img src={escolaLogo} alt="Logo" className="w-8 h-8 object-contain" /> : <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-white"/></div>}
+          {escolaLogo ? <img src={escolaLogo} alt="Logo" className="w-8 h-8 object-contain" /> : <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><Landmark className="w-4 h-4 text-white"/></div>}
           <h1 className="font-black text-sm uppercase tracking-widest">{escolaNome}</h1>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-600 bg-slate-100 rounded-md">
@@ -598,7 +591,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                <img src={escolaLogo} alt="Logo" className="w-12 h-12 object-contain" />
              ) : (
                <div className="w-12 h-12 bg-blue-600 rounded-[20px] flex items-center justify-center shadow-lg shadow-blue-600/20">
-                 <ShieldCheck className="w-6 h-6 text-white"/>
+                 <Landmark className="w-6 h-6 text-white"/>
                </div>
              )}
           </div>
