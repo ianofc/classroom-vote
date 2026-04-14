@@ -55,6 +55,7 @@ const Index = () => {
       const escolaData = Array.isArray(data.escolas) ? data.escolas[0] : data.escolas;
       if (escolaData?.nome) { setEscolaNome(escolaData.nome); idDaEscola = escolaData.id; setEscolaId(idDaEscola); }
     }
+    // Mantemos a chamada inicial para a UI, mas a Urna usará sempre dados em tempo real
     if (idDaEscola) {
       const { data: eleicoes } = await supabase.from('eleicoes').select('*').eq('escola_id', idDaEscola).eq('status', 'ativa').order('created_at', { ascending: false });
       if (eleicoes) setActiveElections(eleicoes);
@@ -101,9 +102,27 @@ const Index = () => {
     setSearching(false);
   };
 
+  // ============================================================================
+  // O NOVO CÉREBRO DA URNA: BLINDADO CONTRA CACHE E COM LÓGICA RESTRITA CORRIGIDA
+  // ============================================================================
   const selectVoter = async (student: any) => {
     setLoadingCandidates(true); setVoterData(student); setSearchQuery(""); setSearchResults([]);
-    if (activeElections.length === 0) {
+    
+    if (!escolaId) {
+      toast({ title: "Erro de Sessão", description: "Recarregue a página.", variant: "destructive" });
+      setLoadingCandidates(false); return;
+    }
+
+    // 1. DADOS FRESCOS: Busca as eleições no exato momento para ignorar a cache.
+    const { data: eleicoesFrescas } = await supabase.from('eleicoes')
+      .select('*')
+      .eq('escola_id', escolaId)
+      .eq('status', 'ativa')
+      .order('created_at', { ascending: false });
+
+    const currentActiveElections = eleicoesFrescas || [];
+
+    if (currentActiveElections.length === 0) {
       toast({ title: "Urnas Fechadas", description: "A comissão precisa abrir uma eleição no painel.", variant: "destructive" });
       setLoadingCandidates(false); return;
     }
@@ -112,10 +131,12 @@ const Index = () => {
     let allowedRoles: string[] = [];
     let allowedElectionsDocs: any[] = []; 
 
-    activeElections.forEach(eleicao => {
+    // 2. PROCESSA QUEM PODE VOTAR NO QUÊ
+    currentActiveElections.forEach(eleicao => {
       const cargosDaEleicao = eleicao.cargos ? eleicao.cargos.split(',').map((c: string) => c.trim()) : [eleicao.nome];
       
       if (eleicao.tipo === 'universal' || eleicao.tipo === 'turma') {
+        // Toda a gente vota sem restrições
         cargosDaEleicao.forEach((cargo: string) => { 
           if (!allowedRoles.includes(cargo)) {
              allowedRoles.push(cargo);
@@ -123,14 +144,15 @@ const Index = () => {
           }
         });
       } else if (eleicao.tipo === 'geral') {
-        cargosDaEleicao.forEach((cargo: string) => {
-          if (rolesDoAluno.includes(cargo.toLowerCase())) { 
-             if (!allowedRoles.includes(cargo)) {
-                allowedRoles.push(cargo);
-                allowedElectionsDocs.push({ nome: cargo, tipo: eleicao.tipo, eleicao_id: eleicao.id });
-             }
-          }
-        });
+        // GERAL RESTRITA CORRIGIDA: Qualquer eleitor que já possua um cargo (Delegado/Líder de turma) está autorizado a votar.
+        if (rolesDoAluno.length > 0) { 
+           cargosDaEleicao.forEach((cargo: string) => {
+              if (!allowedRoles.includes(cargo)) {
+                 allowedRoles.push(cargo);
+                 allowedElectionsDocs.push({ nome: cargo, tipo: eleicao.tipo, eleicao_id: eleicao.id });
+              }
+           });
+        }
       }
     });
 
@@ -317,7 +339,7 @@ const Index = () => {
           <div className="w-full max-w-[700px] mt-10">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Identificação do Eleitor</h2>
-              <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">Existem <strong className="text-blue-600 dark:text-blue-400">{activeElections.length}</strong> pleitos ativos. A cédula será carregada automaticamente.</p>
+              <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">A cédula e os pleitos serão validados automaticamente para o eleitor.</p>
             </div>
 
             <div className="relative mb-6">
@@ -334,7 +356,7 @@ const Index = () => {
                   searchResults.map(student => (
                     <button key={student.id} onClick={() => selectVoter(student)} className="w-full p-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors text-left">
                       <div><p className="font-bold text-slate-800 dark:text-white text-lg">{student.name}</p><p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Seção/Turma: {student.turmas?.name}</p></div>
-                      {student.candidate_role && (<div className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5"><UserCheck className="w-3 h-3" /> CANDIDATO</div>)}
+                      {student.candidate_role && (<div className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5"><UserCheck className="w-3 h-3" /> CANDIDATO / DELEGADO</div>)}
                     </button>
                   ))
                 )}
@@ -353,8 +375,8 @@ const Index = () => {
             <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 rounded-xl text-left">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pleitos Habilitados para o Eleitor:</p>
               <div className="space-y-2">
-                {urnaPayload.allowedRoles.map((role: string) => (
-                  <div key={role} className="bg-blue-100/50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 text-sm font-bold px-3 py-2 rounded-lg flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> {role}</div>
+                {urnaPayload.allowedElections.map((el: any, idx: number) => (
+                  <div key={idx} className="bg-blue-100/50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 text-sm font-bold px-3 py-2 rounded-lg flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> {el.nome}</div>
                 ))}
               </div>
             </div>
