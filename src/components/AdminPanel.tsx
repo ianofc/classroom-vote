@@ -88,14 +88,14 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const fetchAllData = async () => {
     setReportLoading(true);
     
-    // CORREÇÃO DO BUG CRÍTICO DE 1000 VOTOS (PAGINAÇÃO SEGUURA)
+    // CORREÇÃO: PAGINAÇÃO INFINITA COM ORDENAÇÃO
     const fetchEverything = async (tableName: string) => {
       let allData: any[] = []; let from = 0; const step = 1000; let fetchMore = true;
       while (fetchMore) {
         const { data, error } = await supabase
            .from(tableName)
            .select('*')
-           .order('id', { ascending: true }) // A MÁGICA: Evita que o Supabase embaralhe as páginas!
+           .order('id', { ascending: true }) // CRÍTICO: Previne embaralhamento
            .range(from, from + step - 1);
            
         if (error) { toast({ title: "Erro ao buscar dados", description: error.message, variant: "destructive" }); break; }
@@ -165,7 +165,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const eleicaoSelecionada = allEleicoes.find(e => e.id === apuracaoEleicaoId);
   const isEleicaoGlobal = eleicaoSelecionada?.tipo === 'universal' || eleicaoSelecionada?.tipo === 'geral';
 
-  // O TERMÔMETRO AGORA RESPONDE AOS FILTROS E CONTA CÉDULAS (ELEITORES) E NÃO VOTOS SOLTOS
+  // TERMÔMETRO: Eleitores vs Cédulas (Evita 100+%)
   const estatisticasEscola = useMemo(() => {
     let eleitoresBase = allStudents;
     let votosBase = allVotes;
@@ -181,10 +181,9 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     }
 
     const totalEleitores = eleitoresBase.length;
-    // Identifica quantas pessoas físicas votaram (Cédulas) usando o nome do eleitor
+    // Agrupa por pessoa física
     const eleitoresQueVotaram = new Set(votosBase.map(v => v.voter_name || v.id)).size; 
     
-    // Evita percentagens absurdas acima de 100% se os alunos foram apagados após votarem
     const cappedVotaram = Math.min(eleitoresQueVotaram, totalEleitores > 0 ? totalEleitores : eleitoresQueVotaram);
     const comparecimento = totalEleitores > 0 ? (cappedVotaram / totalEleitores) * 100 : 0;
     const abstencao = totalEleitores > 0 ? Math.max(0, 100 - comparecimento) : 0;
@@ -215,7 +214,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     return ranking.sort((a, b) => b.engajamento - a.engajamento).filter(t => t.alunos > 0).slice(0, 5);
   }, [allTurmas, allStudents, allVotes, apuracaoEleicaoId]);
 
-  // NOVO QUADRO GERAL PADRÃO TSE
+  // QUADRO GERAL (TSE STYLE)
   const apuracaoOverview = useMemo(() => {
     if (!apuracaoEleicaoId) return { cedulas: 0, total: 0, validos: 0, brancos: 0, nulos: 0 };
     const votosFiltrados = allVotes.filter(v => {
@@ -236,38 +235,61 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
     };
   }, [apuracaoEleicaoId, apuracaoTurmaId, allVotes, isEleicaoGlobal]);
 
+  // CORREÇÃO: ISOLAMENTO ABSOLUTO DA APURAÇÃO POR ELEIÇÃO
   const apuracaoResults = useMemo(() => {
-    if (!apuracaoEleicaoId) return null;
-    const votosFiltrados = allVotes.filter(v => {
+    if (!apuracaoEleicaoId || !eleicaoSelecionada) return null;
+
+    // 1. Isolar Votos DESTA eleição
+    const votosDestaEleicao = allVotes.filter(v => {
       const matchEleicao = (apuracaoEleicaoId === 'legacy' && !v.eleicao_id) || v.eleicao_id === apuracaoEleicaoId;
       if (!matchEleicao) return false;
       if (!isEleicaoGlobal && apuracaoTurmaId && v.turma_id !== apuracaoTurmaId) return false;
       return true;
     });
 
-    let candidatosFiltrados = allCandidates.filter(c => {
-        if (isEleicaoGlobal) {
-            const cargosDaEleicao = (eleicaoSelecionada?.cargos || eleicaoSelecionada?.nome || "").toLowerCase();
-            const cargosDoCandidato = (c.candidate_role || "").toLowerCase();
-            return cargosDaEleicao.includes(cargosDoCandidato) || cargosDoCandidato.includes(cargosDaEleicao);
-        } else {
-            return apuracaoTurmaId ? c.turma_id === apuracaoTurmaId : false;
-        }
-    });
+    // 2. Isolar Cargos DESTA eleição
+    const cargosDaEleicao = eleicaoSelecionada.cargos 
+        ? eleicaoSelecionada.cargos.split(',').map((c: string) => c.trim()) 
+        : [eleicaoSelecionada.nome];
 
-    const roles = Array.from(new Set(candidatosFiltrados.map(c => c.candidate_role ? c.candidate_role.split(',')[0].trim() : "Líder Geral")));
-    
-    return roles.map(role => {
-      const votesForRole = votosFiltrados.filter(v => v.candidate_role === role || (!v.candidate_role && role === "Líder Geral"));
-      const totalVotes = votesForRole.length;
-      const candidateResults = candidatosFiltrados.filter(c => (c.candidate_role || "").includes(role) || (!c.candidate_role && role === "Líder Geral")).map(c => {
-        const vCount = votesForRole.filter(v => v.vote_type === 'candidate' && v.candidate_number === c.candidate_number).length;
+    // 3. Montar blocos apenas para os cargos configurados
+    return cargosDaEleicao.map(cargoNome => {
+      
+      const votosDoCargo = votosDestaEleicao.filter(v => {
+        if (!v.candidate_role) return cargoNome === "Líder Geral"; // legado
+        return v.candidate_role.trim().toLowerCase() === cargoNome.toLowerCase();
+      });
+      
+      const totalVotes = votosDoCargo.length;
+      
+      const candidatosDesteCargo = allCandidates.filter(c => {
+         if (!c.candidate_role) return false;
+         const rolesDoCand = c.candidate_role.split(',').map((r: string) => r.trim().toLowerCase());
+         const temOCargo = rolesDoCand.includes(cargoNome.toLowerCase());
+         
+         if (!temOCargo) return false;
+         
+         if (!isEleicaoGlobal && apuracaoTurmaId) {
+             return c.turma_id === apuracaoTurmaId;
+         }
+         return true;
+      });
+
+      const candidateResults = candidatosDesteCargo.map(c => {
+        const vCount = votosDoCargo.filter(v => v.vote_type === 'candidate' && v.candidate_number === c.candidate_number).length;
         return { ...c, votes: vCount, percentage: totalVotes > 0 ? (vCount / totalVotes) * 100 : 0 };
       }).sort((a, b) => b.votes - a.votes);
       
-      const brancos = votesForRole.filter(v => v.vote_type === 'branco').length;
-      const nulos = votesForRole.filter(v => v.vote_type === 'nulo').length;
-      return { role, totalVotes, candidateResults, brancos: { votes: brancos, percentage: totalVotes > 0 ? (brancos/totalVotes)*100 : 0 }, nulos: { votes: nulos, percentage: totalVotes > 0 ? (nulos/totalVotes)*100 : 0 } };
+      const brancos = votosDoCargo.filter(v => v.vote_type === 'branco').length;
+      const nulos = votosDoCargo.filter(v => v.vote_type === 'nulo').length;
+      
+      return { 
+         role: cargoNome, 
+         totalVotes, 
+         candidateResults, 
+         brancos: { votes: brancos, percentage: totalVotes > 0 ? (brancos/totalVotes)*100 : 0 }, 
+         nulos: { votes: nulos, percentage: totalVotes > 0 ? (nulos/totalVotes)*100 : 0 } 
+      };
     });
   }, [apuracaoEleicaoId, apuracaoTurmaId, allVotes, allCandidates, isEleicaoGlobal, eleicaoSelecionada]);
 
