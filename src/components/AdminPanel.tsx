@@ -87,12 +87,23 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
 
   const fetchAllData = async () => {
     setReportLoading(true);
+    
+    // CORREÇÃO DO BUG CRÍTICO DE 1000 VOTOS (PAGINAÇÃO SEGUURA)
     const fetchEverything = async (tableName: string) => {
       let allData: any[] = []; let from = 0; const step = 1000; let fetchMore = true;
       while (fetchMore) {
-        const { data, error } = await supabase.from(tableName).select('*').range(from, from + step - 1);
+        const { data, error } = await supabase
+           .from(tableName)
+           .select('*')
+           .order('id', { ascending: true }) // A MÁGICA: Evita que o Supabase embaralhe as páginas!
+           .range(from, from + step - 1);
+           
         if (error) { toast({ title: "Erro ao buscar dados", description: error.message, variant: "destructive" }); break; }
-        if (data && data.length > 0) { allData = [...allData, ...data]; if (data.length < step) fetchMore = false; else from += step; } else { fetchMore = false; }
+        if (data && data.length > 0) { 
+           allData = [...allData, ...data]; 
+           if (data.length < step) fetchMore = false; 
+           else from += step; 
+        } else { fetchMore = false; }
       }
       return allData;
     };
@@ -154,32 +165,75 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
   const eleicaoSelecionada = allEleicoes.find(e => e.id === apuracaoEleicaoId);
   const isEleicaoGlobal = eleicaoSelecionada?.tipo === 'universal' || eleicaoSelecionada?.tipo === 'geral';
 
+  // O TERMÔMETRO AGORA RESPONDE AOS FILTROS E CONTA CÉDULAS (ELEITORES) E NÃO VOTOS SOLTOS
   const estatisticasEscola = useMemo(() => {
-    const totalEleitores = allStudents.length;
-    const eleitoresQueVotaram = new Set(allVotes.map(v => v.voter_name || "Anônimo")).size; 
-    const comparecimento = totalEleitores > 0 ? (eleitoresQueVotaram / totalEleitores) * 100 : 0;
-    return { total: totalEleitores, votaram: eleitoresQueVotaram, comparecimento: comparecimento.toFixed(1), abstencao: (totalEleitores > 0 ? 100 - comparecimento : 0).toFixed(1), isHot: comparecimento >= 75 };
-  }, [allStudents, allVotes]);
+    let eleitoresBase = allStudents;
+    let votosBase = allVotes;
+
+    if (apuracaoEleicaoId) {
+       const matchEleicao = apuracaoEleicaoId === 'legacy' ? null : apuracaoEleicaoId;
+       votosBase = allVotes.filter(v => matchEleicao ? v.eleicao_id === matchEleicao : !v.eleicao_id);
+    }
+
+    if (!isEleicaoGlobal && apuracaoTurmaId) {
+       eleitoresBase = allStudents.filter(s => s.turma_id === apuracaoTurmaId);
+       votosBase = votosBase.filter(v => v.turma_id === apuracaoTurmaId);
+    }
+
+    const totalEleitores = eleitoresBase.length;
+    // Identifica quantas pessoas físicas votaram (Cédulas) usando o nome do eleitor
+    const eleitoresQueVotaram = new Set(votosBase.map(v => v.voter_name || v.id)).size; 
+    
+    // Evita percentagens absurdas acima de 100% se os alunos foram apagados após votarem
+    const cappedVotaram = Math.min(eleitoresQueVotaram, totalEleitores > 0 ? totalEleitores : eleitoresQueVotaram);
+    const comparecimento = totalEleitores > 0 ? (cappedVotaram / totalEleitores) * 100 : 0;
+    const abstencao = totalEleitores > 0 ? Math.max(0, 100 - comparecimento) : 0;
+
+    return { 
+       total: totalEleitores, 
+       votaram: eleitoresQueVotaram, 
+       comparecimento: comparecimento.toFixed(1), 
+       abstencao: abstencao.toFixed(1), 
+       isHot: comparecimento >= 75 
+    };
+  }, [allStudents, allVotes, apuracaoEleicaoId, apuracaoTurmaId, isEleicaoGlobal]);
 
   const rankingTurmas = useMemo(() => {
     const ranking = allTurmas.map(turma => {
       const alunosDaTurma = allStudents.filter(s => s.turma_id === turma.id).length;
-      const votosDaTurma = new Set(allVotes.filter(v => v.turma_id === turma.id).map(v => v.voter_name || "Anônimo")).size;
+      
+      let votosBase = allVotes;
+      if (apuracaoEleicaoId) {
+         const matchEleicao = apuracaoEleicaoId === 'legacy' ? null : apuracaoEleicaoId;
+         votosBase = allVotes.filter(v => matchEleicao ? v.eleicao_id === matchEleicao : !v.eleicao_id);
+      }
+      
+      const votosDaTurma = new Set(votosBase.filter(v => v.turma_id === turma.id).map(v => v.voter_name || v.id)).size;
       const engajamento = alunosDaTurma > 0 ? (votosDaTurma / alunosDaTurma) * 100 : 0;
-      return { id: turma.id, nome: turma.name || "", alunos: alunosDaTurma, votos: votosDaTurma, engajamento: parseFloat(engajamento.toFixed(1)) };
+      return { id: turma.id, nome: turma.name || "", alunos: alunosDaTurma, votos: votosDaTurma, engajamento: parseFloat(Math.min(100, engajamento).toFixed(1)) };
     });
     return ranking.sort((a, b) => b.engajamento - a.engajamento).filter(t => t.alunos > 0).slice(0, 5);
-  }, [allTurmas, allStudents, allVotes]);
+  }, [allTurmas, allStudents, allVotes, apuracaoEleicaoId]);
 
+  // NOVO QUADRO GERAL PADRÃO TSE
   const apuracaoOverview = useMemo(() => {
-    if (!apuracaoEleicaoId) return { total: 0, validos: 0, brancos: 0, nulos: 0 };
+    if (!apuracaoEleicaoId) return { cedulas: 0, total: 0, validos: 0, brancos: 0, nulos: 0 };
     const votosFiltrados = allVotes.filter(v => {
       const matchEleicao = (apuracaoEleicaoId === 'legacy' && !v.eleicao_id) || v.eleicao_id === apuracaoEleicaoId;
       if (!matchEleicao) return false;
       if (!isEleicaoGlobal && apuracaoTurmaId && v.turma_id !== apuracaoTurmaId) return false;
       return true;
     });
-    return { total: votosFiltrados.length, validos: votosFiltrados.filter(v => v.vote_type === 'candidate').length, brancos: votosFiltrados.filter(v => v.vote_type === 'branco').length, nulos: votosFiltrados.filter(v => v.vote_type === 'nulo').length };
+
+    const cedulasEntregues = new Set(votosFiltrados.map(v => v.voter_name || v.id)).size;
+
+    return { 
+      cedulas: cedulasEntregues,
+      total: votosFiltrados.length, 
+      validos: votosFiltrados.filter(v => v.vote_type === 'candidate').length, 
+      brancos: votosFiltrados.filter(v => v.vote_type === 'branco').length, 
+      nulos: votosFiltrados.filter(v => v.vote_type === 'nulo').length 
+    };
   }, [apuracaoEleicaoId, apuracaoTurmaId, allVotes, isEleicaoGlobal]);
 
   const apuracaoResults = useMemo(() => {
@@ -265,7 +319,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       const fetchEverything = async (tableName: string) => {
         let allData: any[] = []; let from = 0; const step = 1000; let fetchMore = true;
         while (fetchMore) {
-          const { data, error } = await supabase.from(tableName).select('*').range(from, from + step - 1);
+          const { data, error } = await supabase.from(tableName).select('*').order('id', { ascending: true }).range(from, from + step - 1);
           if (error) throw error;
           if (data && data.length > 0) { allData = [...allData, ...data]; if (data.length < step) fetchMore = false; else from += step; } else fetchMore = false;
         }
@@ -304,7 +358,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
       }).join('');
     } else { rolesHtml = `<p style="text-align: center; color: #666; margin-top: 40px;">Nenhum dado de votação encontrado.</p>`; }
 
-    const reportHtml = `<html><head><title>Boletim de Urna - ${nomeEleicao}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e2e8f0; } .overview div { text-align: center; width: 25%; border-right: 1px solid #e2e8f0; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #0f172a; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #0f172a; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; } th { background-color: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #475569; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 50px; border-top: 1px solid #e2e8f0; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${escapeHtml(escolaNome)}</h1><div class="sub">Boletim Oficial de Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #0f172a;">${tituloRelatorio}</h3><p style="margin:5px 0 0 0; color:#64748b;">Pleito: ${nomeEleicao}</p></div><div class="overview"><div><span>Votos Computados</span><strong>${apuracaoOverview.total}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>${rolesHtml}<div class="rodape">Gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Ágora OS Enterprise</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
+    const reportHtml = `<html><head><title>Boletim de Urna - ${nomeEleicao}</title><style>body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #222; } .cabecalho { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; } h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; } .sub { color: #666; font-size: 14px; margin-top: 5px; font-weight: bold; text-transform: uppercase; } .overview { display: flex; justify-content: space-between; background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e2e8f0; } .overview div { text-align: center; width: 25%; border-right: 1px solid #e2e8f0; } .overview div:last-child { border-right: none; } .overview strong { display: block; font-size: 24px; color: #0f172a; margin-top: 8px; } .overview span { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; } .role-section { margin-bottom: 40px; page-break-inside: avoid; } .role-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; background: #0f172a; color: #fff; padding: 12px 15px; margin: 0; border-top-left-radius: 6px; border-top-right-radius: 6px; } table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 13px; } th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; } th { background-color: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 10px; color: #475569; } .role-summary { display: flex; justify-content: flex-end; gap: 20px; font-size: 12px; padding: 12px 15px; background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; } .rodape { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 50px; border-top: 1px solid #e2e8f0; padding-top: 20px; line-height: 1.6; } .creditos { margin-top: 15px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 1px; } @media print { @page { margin: 1.5cm; size: A4 portrait; } button { display: none; } }</style></head><body><div class="cabecalho"><h1>${escapeHtml(escolaNome)}</h1><div class="sub">Boletim Oficial de Apuração</div><h3 style="margin-top: 15px; font-size: 18px; color: #0f172a;">${tituloRelatorio}</h3><p style="margin:5px 0 0 0; color:#64748b;">Pleito: ${nomeEleicao}</p></div><div class="overview"><div><span>Eleitores (Cédulas)</span><strong>${apuracaoOverview.cedulas}</strong></div><div><span>Votos Válidos</span><strong style="color: #16a34a;">${apuracaoOverview.validos}</strong></div><div><span>Brancos Gerais</span><strong>${apuracaoOverview.brancos}</strong></div><div><span>Nulos Gerais</span><strong style="color: #ea580c;">${apuracaoOverview.nulos}</strong></div></div>${rolesHtml}<div class="rodape">Gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}<div class="creditos">Ágora OS Enterprise</div></div><script>window.onload = function() { window.print(); }</script></body></html>`;
     const printWindow = window.open("", "_blank");
     if (printWindow) { printWindow.document.write(reportHtml); printWindow.document.close(); setTimeout(() => { setIsPrinting(false); }, 1000); }
   };
@@ -352,14 +406,14 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                   <h2 className="text-xl font-black uppercase tracking-widest text-slate-100">Termômetro da Democracia</h2>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Eleitorado</p><p className="text-3xl font-black text-white">{estatisticasEscola.total}</p></div>
-                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Votaram</p><p className="text-3xl font-black text-green-400">{estatisticasEscola.votaram}</p></div>
+                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Eleitorado Base</p><p className="text-3xl font-black text-white">{estatisticasEscola.total}</p></div>
+                  <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Cédulas Registadas</p><p className="text-3xl font-black text-green-400">{estatisticasEscola.votaram}</p></div>
                   <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Comparecimento</p><p className="text-3xl font-black text-blue-400">{estatisticasEscola.comparecimento}%</p></div>
                   <div><p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Abstenção Atual</p><p className="text-3xl font-black text-red-400">{estatisticasEscola.abstencao}%</p></div>
                 </div>
               </div>
               <div className="w-full md:w-80 bg-white/10 backdrop-blur-sm p-5 rounded-2xl z-10 flex flex-col border border-white/10">
-                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2"><Trophy className="w-5 h-5 text-yellow-500" /><h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Top 5 Zonas</h3></div>
+                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2"><Trophy className="w-5 h-5 text-yellow-500" /><h3 className="text-sm font-black uppercase tracking-widest text-slate-100">Top 5 Zonas (Engajamento)</h3></div>
                 <div className="space-y-3">
                   {rankingTurmas.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">Aguardando votos...</p> : rankingTurmas.map((turma, index) => (
                       <div key={turma.id} className="flex justify-between group"><p className="text-sm font-bold text-slate-200">{index + 1}º {turma.nome}</p><p className="text-sm font-black text-white">{turma.engajamento}%</p></div>
@@ -393,10 +447,10 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-slate-500">VOTOS COMPUTADOS</p><p className="text-3xl font-black text-blue-600">{apuracaoOverview.total}</p></div>
-              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-slate-500">VÁLIDOS</p><p className="text-3xl font-black text-green-600">{apuracaoOverview.validos}</p></div>
-              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-slate-500">BRANCOS</p><p className="text-3xl font-black text-slate-600">{apuracaoOverview.brancos}</p></div>
-              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-xs font-bold text-slate-500">NULOS</p><p className="text-3xl font-black text-orange-500">{apuracaoOverview.nulos}</p></div>
+              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-slate-500 uppercase">ELEITORES (CÉDULAS)</p><p className="text-3xl font-black text-blue-600">{apuracaoOverview.cedulas}</p></div>
+              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-slate-500 uppercase">TOTAL DE ESCOLHAS</p><p className="text-3xl font-black text-slate-800">{apuracaoOverview.total}</p></div>
+              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-slate-500 uppercase">BRANCOS (GERAL)</p><p className="text-3xl font-black text-slate-400">{apuracaoOverview.brancos}</p></div>
+              <div className="bg-white p-5 rounded-2xl border shadow-sm"><p className="text-[10px] font-bold text-slate-500 uppercase">NULOS (GERAL)</p><p className="text-3xl font-black text-orange-500">{apuracaoOverview.nulos}</p></div>
             </div>
 
             {reportLoading ? <div className="py-12 text-center text-slate-400 font-bold animate-pulse">A calcular resultados...</div> : apuracaoResults?.length === 0 ? (
@@ -498,7 +552,7 @@ const AdminPanel = ({ turma, onBack, onTurmasChanged }: AdminPanelProps) => {
                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500">Data</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input type="date" className="w-full pl-9 p-2.5 border rounded-lg text-sm text-slate-600" value={filters.date} onChange={e => setFilters({...filters, date: e.target.value})} /></div></div>
               </div>
               <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t mt-4 gap-4">
-                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> votos no sistema.</p>
+                <p className="text-sm text-slate-500 font-medium">Encontrados <strong className="text-blue-600 text-lg">{filteredReport.length}</strong> escolhas no sistema.</p>
                 <div className="flex gap-2 w-full md:w-auto">
                   <button onClick={exportToCSV} disabled={filteredReport.length === 0} className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Exportar CSV</button>
                   <button onClick={printFilteredReport} disabled={isPrinting || filteredReport.length === 0} className="flex-1 md:flex-none bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><Printer className="w-4 h-4" /> Relatório PDF</button>
